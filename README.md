@@ -73,6 +73,10 @@ Most LLM "routing" libraries are SaaS gateways or LangChain agents. There was no
 
 ## How it works
 
+`AIRouter(app, llm=...)` adds a single `POST /ai` endpoint to your FastAPI app. On the first request, it walks `app.routes` and projects each one (filtered by `mode`) into a JSON Schema tool definition — using the OpenAPI machinery FastAPI already generates. The user's natural-language `{"query": "..."}` is sent to your LLM along with those tool definitions; the LLM picks one tool and fills its arguments. The middleware then dispatches that call internally via `httpx + ASGITransport` (the same pattern FastAPI's `TestClient` uses), so your existing `Depends(auth)`, middleware, validation, and exception handlers all run normally — auth and tracing headers are forwarded transparently. The dispatched response is wrapped in an envelope showing what the LLM picked and why, and returned to the client with the dispatched call's HTTP status code.
+
+In the [quickstart above](#what-it-does), the LLM read the `cancel_order` route's description and signature, decided it was the right match for `"cancel order 123, it was a duplicate"`, extracted `order_id=123` and `reason="duplicate"` from the natural-language query, and the middleware dispatched the call exactly as if a normal client had hit `POST /orders/123/cancel?reason=duplicate` directly.
+
 ```mermaid
 sequenceDiagram
     autonumber
