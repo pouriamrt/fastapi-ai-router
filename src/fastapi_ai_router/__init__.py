@@ -28,7 +28,7 @@ from fastapi_ai_router.observability import (
     ErrorHook,
 )
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
 
 __all__ = [
     "DEFAULT_FORWARD_HEADERS",

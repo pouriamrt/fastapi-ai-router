@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-ai-router"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "FastAPI middleware that turns your routes into a natural-language-callable surface using LLM function-calling."
 readme = "README.md"
 license = { text = "MIT" }
