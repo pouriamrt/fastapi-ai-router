@@ -31,6 +31,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.10",
     "litellm>=1.40",
+    "python-multipart>=0.0.26",
 ]
 
 [project.urls]
