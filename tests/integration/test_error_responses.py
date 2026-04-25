@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from fastapi_ai_router.backends import ToolCall
 from fastapi_ai_router.core import AIRouter
+from fastapi_ai_router.errors import LLMBackendError
 from tests.conftest import make_backend
 
 
@@ -35,12 +36,7 @@ def test_unknown_tool_returns_422(sample_app):
 
 
 def test_llm_backend_error_returns_502(sample_app):
-    # Relaxation note: AIRouter's _handle re-raises AIRouterError subclasses
-    # (including LLMBackendError) so callers can use FastAPI exception handlers.
-    # Only non-library upstream exceptions get wrapped into the 502 envelope.
-    # We therefore exercise the 502 path with a generic RuntimeError, which is
-    # the realistic "vendor SDK threw something unexpected" case.
-    backend = make_backend(returns=RuntimeError("upstream timeout"))
+    backend = make_backend(returns=LLMBackendError("upstream timeout"))
     AIRouter(sample_app, llm=backend, mode="decorator")
     client = TestClient(sample_app)
     resp = client.post("/ai", json={"query": "anything"})
@@ -67,3 +63,34 @@ def test_dispatched_route_4xx_passes_through_status(sample_app):
     resp = client.post("/ai", json={"query": "cancel"})
     assert resp.status_code in (401, 422)
     assert resp.json().get("result_status") in (401, 422)
+
+
+def test_dispatch_error_returns_500(sample_app, monkeypatch):
+    """If the loopback dispatcher itself fails (transport-level error), the
+    library returns 500 with a structured envelope rather than letting the
+    exception propagate."""
+    from fastapi_ai_router import core as core_mod
+
+    backend = make_backend(
+        ToolCall(
+            name="list_products",
+            args={"category": "books"},
+            reasoning="",
+            prompt_tokens=0,
+            completion_tokens=0,
+            model="fake",
+        )
+    )
+    AIRouter(sample_app, llm=backend, mode="decorator")
+
+    async def boom(**kwargs):
+        raise RuntimeError("transport exploded")
+
+    monkeypatch.setattr(core_mod, "dispatch", boom)
+
+    client = TestClient(sample_app)
+    resp = client.post("/ai", json={"query": "list books"})
+    assert resp.status_code == 500
+    body = resp.json()
+    assert body["error"] == "dispatch_error"
+    assert "transport exploded" in body["detail"]

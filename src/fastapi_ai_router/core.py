@@ -14,10 +14,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi_ai_router.backends import LLMBackend, Message, ToolCall
 from fastapi_ai_router.dispatcher import dispatch
 from fastapi_ai_router.envelope import is_raw_requested, wrap_envelope
-from fastapi_ai_router.errors import (
-    AIRouterError,
-    DispatchError,
-)
+from fastapi_ai_router.errors import LLMBackendError
 from fastapi_ai_router.introspection import Mode, ModeConfig, build_registry, build_tools
 from fastapi_ai_router.observability import (
     Decision,
@@ -129,8 +126,16 @@ class AIRouter:
         llm_started = time.perf_counter()
         try:
             tool_call = await self._llm.call(messages=messages, tools=tools)
-        except AIRouterError:
-            raise
+        except LLMBackendError as exc:
+            await self._fire_error(request_id, query, "llm_backend_error", str(exc), exc)
+            return _json_response(
+                502,
+                {
+                    "error": "llm_backend_error",
+                    "detail": str(exc),
+                    "retryable": True,
+                },
+            )
         except BaseException as exc:
             await self._fire_error(request_id, query, "llm_backend_error", str(exc), exc)
             return _json_response(
@@ -181,7 +186,10 @@ class AIRouter:
             )
         except BaseException as exc:
             await self._fire_error(request_id, query, "dispatch_error", str(exc), exc)
-            raise DispatchError(str(exc)) from exc
+            return _json_response(
+                500,
+                {"error": "dispatch_error", "detail": str(exc)},
+            )
         dispatch_latency_ms = int((time.perf_counter() - dispatch_started) * 1000)
 
         # ---- response shape ----
