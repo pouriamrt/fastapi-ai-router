@@ -35,8 +35,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/pouria/fastapi-ai-router"
-Issues = "https://github.com/pouria/fastapi-ai-router/issues"
+Homepage = "https://github.com/pouriamrt/fastapi-ai-router"
+Documentation = "https://github.com/pouriamrt/fastapi-ai-router#readme"
+Issues = "https://github.com/pouriamrt/fastapi-ai-router/issues"
+Changelog = "https://github.com/pouriamrt/fastapi-ai-router/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]
