@@ -77,46 +77,46 @@ Most LLM "routing" libraries are SaaS gateways or LangChain agents. There was no
 sequenceDiagram
     autonumber
     participant Client
-    participant /ai as AIRouter (/ai endpoint)
+    participant Router as AIRouter at /ai
     participant LLM
-    participant Route as Your FastAPI route
-    participant Deps as Depends(auth) etc.
+    participant Route as FastAPI route
+    participant Deps as Depends(auth)
 
-    Client->>/ai: POST /ai {"query": "cancel order 7"}
-    Note over /ai: Layer-1 deps fire here
-    /ai->>/ai: Build tool defs from app.routes (cached)
-    /ai->>LLM: messages + tools (OpenAI tool-calling shape)
-    LLM-->>/ai: ToolCall(name="cancel", args={"order_id":7,...})
-    /ai->>/ai: Resolve name → RouteSpec, un-flatten args, URL-encode path
-    /ai->>Deps: Forward Authorization header via httpx loopback
+    Client->>Router: POST /ai with query JSON
+    Note over Router: Layer-1 deps fire here
+    Router->>Router: Build tool defs from app.routes (cached)
+    Router->>LLM: messages + tools (OpenAI tool-calling shape)
+    LLM-->>Router: ToolCall name and args
+    Router->>Router: Resolve name to RouteSpec, un-flatten, URL-encode
+    Router->>Deps: Forward Authorization via httpx ASGI loopback
     Deps->>Route: Layer-2 auth passes
-    Route-->>/ai: {"status": "cancelled"}
-    /ai->>/ai: wrap_envelope(decision, response)
-    /ai-->>Client: 200 OK + envelope
+    Route-->>Router: dispatched response
+    Router->>Router: wrap_envelope(decision, response)
+    Router-->>Client: 200 OK with envelope
 ```
 
 Internally the architecture is small and split by responsibility:
 
 ```mermaid
 flowchart LR
-    subgraph public["Public surface"]
-        AIRouter([AIRouter])
-        ai_route([@ai_route])
-        LLMBackend([LLMBackend Protocol])
+    subgraph public ["Public surface"]
+        AIRouter(["AIRouter"])
+        ai_route(["ai_route decorator"])
+        LLMBackend(["LLMBackend Protocol"])
     end
 
-    subgraph core["Core pipeline"]
-        introspection[introspection<br/>mode-aware route walk]
-        schema[schema<br/>OpenAPI → flat tool defs]
-        dispatcher[dispatcher<br/>un-flatten + ASGI loopback]
-        envelope[envelope<br/>wrap or raw]
-        observability[observability<br/>async hooks]
+    subgraph core ["Core pipeline"]
+        introspection["introspection<br/>mode-aware route walk"]
+        schema["schema<br/>OpenAPI to flat tool defs"]
+        dispatcher["dispatcher<br/>un-flatten + ASGI loopback"]
+        envelope["envelope<br/>wrap or raw"]
+        observability["observability<br/>async hooks"]
     end
 
-    subgraph backends["Backends"]
-        LiteLLM[LiteLLMBackend<br/>via litellm extra]
-        Fake[FakeLLMBackend<br/>for tests]
-        BYO[Your backend<br/>implements Protocol]
+    subgraph backends ["Backends"]
+        LiteLLM["LiteLLMBackend<br/>via litellm extra"]
+        Fake["FakeLLMBackend<br/>for tests"]
+        BYO["Your backend<br/>implements Protocol"]
     end
 
     AIRouter --> introspection
@@ -124,10 +124,10 @@ flowchart LR
     AIRouter --> dispatcher
     AIRouter --> envelope
     AIRouter --> observability
-    AIRouter -.uses.-> LLMBackend
-    LLMBackend -.implemented by.-> LiteLLM
-    LLMBackend -.implemented by.-> Fake
-    LLMBackend -.implemented by.-> BYO
+    AIRouter -. uses .-> LLMBackend
+    LLMBackend -. implemented by .-> LiteLLM
+    LLMBackend -. implemented by .-> Fake
+    LLMBackend -. implemented by .-> BYO
 ```
 
 Each module has one responsibility, ~100-300 lines, fully typed, fully tested.
@@ -324,7 +324,6 @@ Particularly welcome:
 
 <div align="center">
 
-Built with care for the FastAPI community.<br/>
-If this project is useful to you, ⭐ a star helps others find it.
+Built with care for the FastAPI community.
 
 </div>
