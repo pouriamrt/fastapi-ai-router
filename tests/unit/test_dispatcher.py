@@ -178,3 +178,25 @@ async def test_dispatch_raises_missing_path_params():
             forward=frozenset(),
         )
     assert ei.value.missing == ("order_id",)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_treats_none_path_arg_as_missing():
+    spec = RouteSpec(
+        name="cancel",
+        description="",
+        method="POST",
+        path_template="/orders/{order_id}/cancel",
+        parameters_schema={"type": "object"},
+        param_locations={"order_id": "path", "reason": "query"},
+        handler=lambda: None,
+    )
+    with pytest.raises(MissingPathParams) as ei:
+        await dispatch(
+            spec=spec,
+            args={"order_id": None, "reason": "x"},
+            app=_build_app(),
+            request_headers={},
+            forward=frozenset(),
+        )
+    assert ei.value.missing == ("order_id",)

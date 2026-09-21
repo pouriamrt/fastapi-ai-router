@@ -75,7 +75,7 @@ async def dispatch(
     missing = tuple(
         name
         for name, loc in spec.param_locations.items()
-        if loc == "path" and name not in path_args
+        if loc == "path" and path_args.get(name) is None
     )
     if missing:
         raise MissingPathParams(missing)
