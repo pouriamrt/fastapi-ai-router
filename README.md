@@ -12,8 +12,8 @@ Drop-in middleware. Zero new metadata. Uses the OpenAPI schema FastAPI already g
 [![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-e92063.svg?logo=pydantic&logoColor=white)](https://docs.pydantic.dev/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-D7FF64.svg)](https://github.com/astral-sh/ruff)
 [![Typed: mypy strict](https://img.shields.io/badge/typed-mypy%20strict-2A6DB2.svg)](https://mypy-lang.org/)
-[![Tests: 74 passing](https://img.shields.io/badge/tests-74%20passing-brightgreen.svg)](#testing)
-[![Coverage: 87%25](https://img.shields.io/badge/coverage-87%25-brightgreen.svg)](#testing)
+[![Tests: passing](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#testing)
+[![Coverage: gated](https://img.shields.io/badge/coverage-gated-brightgreen.svg)](#testing)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
 </div>
