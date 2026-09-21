@@ -8,6 +8,7 @@ Drop-in middleware. Zero new metadata. Uses the OpenAPI schema FastAPI already g
 
 Route with any LLM through LiteLLM, or skip the LLM and let TypeSafe's Jev classifier pick the route and its arguments in about 150 ms.
 
+[![PyPI](https://img.shields.io/pypi/v/fastapi-ai-router.svg)](https://pypi.org/project/fastapi-ai-router/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -150,8 +151,9 @@ Each module has one responsibility, ~100-300 lines, fully typed, fully tested.
 ## Install
 
 ```bash
-pip install fastapi-ai-router[litellm]   # any LLM, via LiteLLM
-pip install fastapi-ai-router[jev]       # TypeSafe's Jev classifier (see below)
+pip install fastapi-ai-router[litellm]       # any LLM, via LiteLLM
+pip install fastapi-ai-router[jev]           # TypeSafe's Jev classifier (see below)
+pip install "fastapi-ai-router[jev,litellm]" # Jev with an LLM fallback
 ```
 
 The `[litellm]` extra gives you OpenAI / Anthropic / Gemini / Ollama / 100+ providers via [LiteLLM](https://github.com/BerriAI/litellm) — usually all you need. To bring your own LLM, implement the `LLMBackend` Protocol and skip the extra entirely:
@@ -263,7 +265,7 @@ from fastapi_ai_router.backends.jev import JevBackend
 AIRouter(app, llm=JevBackend())  # reads TYPESAFE_API_KEY
 ```
 
-A request from a live run against [`examples/05_jev.py`](examples/05_jev.py), answered in 158 ms:
+A request from a live run against [`examples/05_jev.py`](https://github.com/pouriamrt/fastapi-ai-router/blob/main/examples/05_jev.py), answered in 158 ms:
 
 ```bash
 $ curl -X POST localhost:8000/ai -H 'content-type: application/json' \
@@ -343,25 +345,73 @@ Every routing decision (and every error) flows through async hooks you control. 
 
 ---
 
-## What's not in v0.1 — by design
+## Configuration reference
 
-| Feature | Why not in v0.1 | When |
+### `AIRouter`
+
+| Option | Default | What it does |
 |---|---|---|
-| Multi-step / agent loops | Stays out of LangChain's territory; sharp positioning | v0.3+ if there's pull |
-| Conversation history | Single-shot is the demo | v0.3+ |
-| Semantic caching | Out-of-scope for the first wedge | v0.2 |
-| Streaming SSE responses | Adds complexity to the response path | v0.2 |
-| Mountable sub-app | Single dedicated endpoint is cleaner | v0.2 |
-| Form / multipart bodies | JSON-only keeps the loopback contract simple | v0.2 |
-| Semantic prefiltering for 100+ routes | All tools sent every call in v0.1 | v0.2 |
+| `llm` | required | The backend that picks the route: `LiteLLMBackend`, `JevBackend`, `FakeLLMBackend`, or your own `LLMBackend` |
+| `mode` | `"decorator"` | Which routes are exposed; see [Exposure modes](#exposure-modes--explicit-and-safe-by-default) |
+| `tag` | `"ai"` | The route tag that `mode="tag"` looks for |
+| `exclude` | `None` | Path globs (`fnmatch` style, such as `"/admin/*"`) that `mode="all"` skips |
+| `endpoint` | `"/ai"` | Where the natural-language endpoint is mounted |
+| `dependencies` | `None` | FastAPI dependencies on that endpoint, for Layer-1 auth or rate limits |
+| `raw_query_param` | `"raw"` | `POST /ai?raw=true` (or `1`, `yes`, `on`) returns the route's own response without the envelope |
+| `forward_headers` | `authorization`, `cookie`, `x-api-key`, `x-forwarded-for`, `x-request-id` | Request headers passed through to the dispatched route |
+| `system_prompt` | A short routing instruction | Sent to LLM backends; `JevBackend` doesn't use it |
+| `on_decision`, `on_error` | `None` | Async hooks; see [Observability](#observability--pluggable-no-vendor-deps) |
 
-Saying "we don't do this yet" up front is itself a positioning choice — see [docs/concepts.md](docs/concepts.md) for the rationale.
+The route list is built on the first request and cached. If you add routes at runtime, call `router.rebuild()`.
+
+### Response envelope
+
+A request that reaches a route gets that route's HTTP status and this body:
+
+| Field | Contents |
+|---|---|
+| `endpoint` | The route that ran, such as `"POST /orders/{order_id}/cancel"` |
+| `args` | The arguments the backend chose |
+| `result` | The route's response body: JSON when the route returned JSON, text otherwise |
+| `reasoning` | The LLM's explanation when it gave one; `null` for Jev |
+| `result_status` | The route's HTTP status |
+
+### `JevBackend`
+
+| Option | Default | What it does |
+|---|---|---|
+| `model` | `"jev-latest"` | A Jev alias, or a pinned version such as `"jev-1.13.0"` |
+| `api_key` | `None` | Your TypeSafe key; when omitted, the SDK reads `TYPESAFE_API_KEY`. It never appears in `repr()` |
+| `min_confidence` | `0.5` | Below this route confidence, Jev counts as unsure |
+| `fallback` | `None` | The backend for unsure routes and for arguments Jev can't fill |
+| `max_span_words` | `6` | The longest run of words offered as a string value |
+| `client` | `None` | Your own `AsyncTypeSafeClient`, for timeouts, retries, or a different base URL |
+
+### `LiteLLMBackend`
+
+`LiteLLMBackend(model, extra_kwargs={})`. `model` is any [LiteLLM model name](https://docs.litellm.ai/docs/providers). `extra_kwargs` go straight to `litellm.acompletion`, for settings such as `temperature` or `api_base`.
+
+---
+
+## Not included yet, by design
+
+| Feature | Why not yet |
+|---|---|
+| Multi-step / agent loops | Stays out of LangChain's territory; sharp positioning |
+| Conversation history | Single-shot is the demo |
+| Semantic caching | Out of scope for the first wedge |
+| Streaming SSE responses | Adds complexity to the response path |
+| Mountable sub-app | Single dedicated endpoint is cleaner |
+| Form / multipart bodies | JSON-only keeps the loopback contract simple |
+| Semantic prefiltering for 100+ routes | Every exposed route is sent on every call today |
+
+Saying "we don't do this yet" up front is itself a positioning choice — see [docs/concepts.md](https://github.com/pouriamrt/fastapi-ai-router/blob/main/docs/concepts.md) for the rationale.
 
 ---
 
 ## Project status
 
-**Alpha.** v0.1.0 is released. `JevBackend` and the fixes that came with it are listed under Unreleased in [CHANGELOG.md](CHANGELOG.md), which also records every breaking change.
+**Alpha.** The latest release is v0.2.0, which adds `JevBackend`. [CHANGELOG.md](https://github.com/pouriamrt/fastapi-ai-router/blob/main/CHANGELOG.md) lists every release and records every breaking change.
 
 - ✅ Core: introspection + dispatch + envelope + errors + observability
 - ✅ Three exposure modes (`decorator` / `tag` / `all`)
@@ -375,11 +425,11 @@ Saying "we don't do this yet" up front is itself a positioning choice — see [d
 
 | Doc | What it covers |
 |---|---|
-| [docs/concepts.md](docs/concepts.md) | Mental model, request flow, two-layer auth, mode comparison, caching |
-| [docs/recipes.md](docs/recipes.md) | Custom backend, custom forwarding, tracing integrations, large-app strategies |
-| [docs/security.md](docs/security.md) | When `mode="all"` is dangerous, prompt injection, header forwarding |
-| [examples/](examples/) | Five runnable apps: basic, tag-mode, with-auth, with-observability, Jev |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing without API keys, adding a backend |
+| [docs/concepts.md](https://github.com/pouriamrt/fastapi-ai-router/blob/main/docs/concepts.md) | Mental model, request flow, two-layer auth, mode comparison, caching |
+| [docs/recipes.md](https://github.com/pouriamrt/fastapi-ai-router/blob/main/docs/recipes.md) | Custom backend, custom forwarding, tracing integrations, large-app strategies |
+| [docs/security.md](https://github.com/pouriamrt/fastapi-ai-router/blob/main/docs/security.md) | When `mode="all"` is dangerous, prompt injection, header forwarding |
+| [examples/](https://github.com/pouriamrt/fastapi-ai-router/tree/main/examples) | Five runnable apps: basic, tag-mode, with-auth, with-observability, Jev |
+| [CONTRIBUTING.md](https://github.com/pouriamrt/fastapi-ai-router/blob/main/CONTRIBUTING.md) | Dev setup, testing without API keys, adding a backend |
 
 ---
 
@@ -399,7 +449,7 @@ The test suite is **deterministic and network-free** by default. Every test uses
 
 ## Contributing
 
-PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup and the bar for new code (TDD, mypy strict, ruff clean, 80%+ coverage).
+PRs welcome. See [CONTRIBUTING.md](https://github.com/pouriamrt/fastapi-ai-router/blob/main/CONTRIBUTING.md) for dev setup and the bar for new code (TDD, mypy strict, ruff clean, 80%+ coverage).
 
 Particularly welcome:
 - New `LLMBackend` adapters (Anthropic-direct, Gemini-direct, vLLM, Ollama-direct, etc.)
@@ -410,7 +460,7 @@ Particularly welcome:
 
 ## License
 
-[MIT](LICENSE) — do whatever you like, attribution appreciated.
+[MIT](https://github.com/pouriamrt/fastapi-ai-router/blob/main/LICENSE) — do whatever you like, attribution appreciated.
 
 <div align="center">
 
