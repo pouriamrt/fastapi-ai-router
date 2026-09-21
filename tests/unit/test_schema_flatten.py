@@ -1,5 +1,7 @@
 """Tests for OpenAPI → RouteSpec projection."""
 
+from enum import StrEnum
+
 from fastapi import Body, FastAPI
 from pydantic import BaseModel
 
@@ -154,3 +156,36 @@ def test_description_uses_decorator_then_docstring():
     spec_b = route_to_spec(_route_named(app, "y_b"))
     assert spec_b is not None
     assert spec_b.description == "Docstring description."
+
+
+def test_body_model_enum_defs_hoisted_to_root():
+    class Color(StrEnum):
+        red = "red"
+        blue = "blue"
+
+    class Paint(BaseModel):
+        color: Color
+
+    app = FastAPI()
+
+    @app.post("/paint", name="paint")
+    def paint(p: Paint) -> dict:
+        return {"ok": True}
+
+    spec = route_to_spec(_route_named(app, "paint"))
+    assert spec is not None
+    schema = spec.parameters_schema
+    assert schema["properties"]["color"] == {"$ref": "#/$defs/Color"}
+    assert schema["$defs"]["Color"]["enum"] == ["red", "blue"]
+
+
+def test_schema_without_defs_has_no_defs_key():
+    app = FastAPI()
+
+    @app.get("/products", name="list_products")
+    def list_products(limit: int = 20) -> dict:
+        return {"items": []}
+
+    spec = route_to_spec(_route_named(app, "list_products"))
+    assert spec is not None
+    assert "$defs" not in spec.parameters_schema

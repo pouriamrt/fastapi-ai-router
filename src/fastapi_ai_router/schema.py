@@ -104,6 +104,7 @@ def _build_parameters_schema(
     properties: dict[str, Any] = {}
     required: list[str] = []
     locations: dict[str, ParamLocation] = {}
+    defs: dict[str, Any] = {}
 
     # Path parameters: always required.
     for param in route.dependant.path_params or []:
@@ -125,6 +126,8 @@ def _build_parameters_schema(
         annotation = _annotation_of(bp)
         if isinstance(annotation, type) and issubclass(annotation, BaseModel):
             schema = annotation.model_json_schema()
+            # Field schemas point at "#/$defs/..."; hoist the defs so those refs resolve.
+            defs.update(schema.get("$defs") or {})
             for fname, fschema in (schema.get("properties") or {}).items():
                 emit_name = fname
                 if emit_name in locations:  # collision with path/query
@@ -158,6 +161,8 @@ def _build_parameters_schema(
         "properties": properties,
         "required": required,
     }
+    if defs:
+        schema_obj["$defs"] = defs
     return schema_obj, locations
 
 
