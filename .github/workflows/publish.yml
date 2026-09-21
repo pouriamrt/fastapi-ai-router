@@ -7,6 +7,10 @@ on:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    # PyPI trusted publishing matches this environment name.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/fastapi-ai-router
     permissions:
       id-token: write
     steps:

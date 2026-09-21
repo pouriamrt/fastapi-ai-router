@@ -411,7 +411,7 @@ Saying "we don't do this yet" up front is itself a positioning choice — see [d
 
 ## Project status
 
-**Alpha.** The latest release is v0.2.0, which adds `JevBackend`. [CHANGELOG.md](https://github.com/pouriamrt/fastapi-ai-router/blob/main/CHANGELOG.md) lists every release and records every breaking change.
+**Alpha.** The latest release is v0.2.1. v0.2.0 added `JevBackend`. [CHANGELOG.md](https://github.com/pouriamrt/fastapi-ai-router/blob/main/CHANGELOG.md) lists every release and records every breaking change.
 
 - ✅ Core: introspection + dispatch + envelope + errors + observability
 - ✅ Three exposure modes (`decorator` / `tag` / `all`)

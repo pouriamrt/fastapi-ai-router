@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-09-21
+
+### Changed
+- Releases publish from GitHub Actions through PyPI trusted publishing, in the `pypi` environment.
+
+### Fixed
+- The source distribution contains only the package, tests, examples, and docs. The 0.2.0 sdist also shipped local tool caches, including a 3.4 MB code-graph database with absolute file paths, plus internal planning docs. The 0.2.0 wheel was not affected.
+
 ## [0.2.0] — 2026-09-21
 
 ### Added
