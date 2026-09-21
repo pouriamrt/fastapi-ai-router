@@ -142,7 +142,8 @@ Each module has one responsibility, ~100-300 lines, fully typed, fully tested.
 ## Install
 
 ```bash
-pip install fastapi-ai-router[litellm]
+pip install fastapi-ai-router[litellm]   # any LLM, via LiteLLM
+pip install fastapi-ai-router[jev]       # TypeSafe's Jev classifier (see below)
 ```
 
 The `[litellm]` extra gives you OpenAI / Anthropic / Gemini / Ollama / 100+ providers via [LiteLLM](https://github.com/BerriAI/litellm) — usually all you need. To bring your own LLM, implement the `LLMBackend` Protocol and skip the extra entirely:
@@ -225,7 +226,35 @@ from fastapi_ai_router.backends.fake import FakeLLMBackend
 router = AIRouter(app, llm=FakeLLMBackend(returns=ToolCall(name="cancel", args={"order_id": 7}, ...)))
 ```
 
-The whole test suite uses `FakeLLMBackend` — **74 tests pass deterministically without a single API key.**
+The whole test suite uses `FakeLLMBackend` and a stubbed Jev client, so **it passes deterministically without a single API key.**
+
+---
+
+## Jev backend: routing without an LLM
+
+[Jev](https://docs.typesafe.ai) is TypeSafe's classifier. It doesn't generate text; it picks among options you give it and reports a calibrated confidence. `JevBackend` routes with that. The route is a choice over your tools, and each argument is a choice over values cut from the query (numbers, word spans, enum values). One request covers the route and every argument, typically in 120–350 ms and for a few thousandths of a cent.
+
+```python
+from fastapi_ai_router.backends.jev import JevBackend
+
+AIRouter(app, llm=JevBackend())  # reads TYPESAFE_API_KEY
+```
+
+Jev handles integers, numbers, booleans, enums, and strings that appear word for word in the query. It can't build lists or nested objects, and it doesn't read number words ("five"). For those cases, and whenever it isn't sure which route fits, you can hand the request to an LLM:
+
+```python
+from fastapi_ai_router.backends.litellm import LiteLLMBackend
+
+AIRouter(app, llm=JevBackend(fallback=LiteLLMBackend(model="gpt-4o-mini")))
+```
+
+| Jev's answer | No fallback | With `fallback=` |
+|---|---|---|
+| Confident that no route fits | 422 `no_route_matched` | same; the LLM is not called |
+| Route confidence below `min_confidence` (default 0.5) | 422 `no_route_matched` | the LLM sees every tool |
+| Route chosen, a required argument missing | 422 naming the missing field | the LLM sees only that route's tool |
+
+Your `on_decision` hook receives Jev's route confidence as `Decision.confidence`.
 
 ---
 
@@ -256,6 +285,7 @@ Every routing decision (and every error) flows through async hooks you control. 
 |---|---|---|
 | `NoRouteMatched` (LLM declined all tools) | 422 | `{"error":"no_route_matched", "available_tools":[…]}` |
 | `UnknownTool` (LLM hallucinated a name) | 422 | `{"error":"unknown_tool", "tool_name":"…"}` |
+| `MissingPathParams` (backend left out a path argument) | 422 | `{"error":"missing_path_param", "missing":[…], "endpoint":"…"}` |
 | `LLMBackendError` (timeout, rate limit, etc.) | 502 | `{"error":"llm_backend_error", "retryable":true}` |
 | Dispatched route 4xx/5xx | passthrough | envelope wraps the response, `result_status` set |
 | `DispatchError` (transport failure) | 500 | `{"error":"dispatch_error", "detail":"…"}` |
@@ -308,9 +338,9 @@ Saying "we don't do this yet" up front is itself a positioning choice — see [d
 
 ```bash
 uv sync --extra dev
-uv run pytest                                   # 74 tests, deterministic, no API keys
+uv run pytest                                   # deterministic, no API keys
 uv run pytest --cov=fastapi_ai_router           # coverage report
-RUN_LLM_TESTS=1 uv run pytest tests/e2e/        # gated real-LLM smoke tests
+RUN_LLM_TESTS=1 uv run --env-file .env pytest tests/e2e/test_with_real_jev.py   # real Jev calls
 ```
 
 The test suite is **deterministic and network-free** by default — every test uses `FakeLLMBackend`. Real-LLM tests are gated behind an env var and run only on release tags in CI.
