@@ -67,6 +67,12 @@ def test_jev_extracts_free_text_reason(client):
     assert "duplicate" in body["args"]["reason"]
 
 
+def test_jev_omits_unstated_reason(client):
+    body = client.post("/ai", json={"query": "cancel order 77"}).json()
+    assert body["endpoint"] == CANCEL
+    assert body["args"] == {"order_id": 77}
+
+
 def test_jev_leaves_unstated_optionals_out(client):
     body = client.post("/ai", json={"query": "show me products"}).json()
     assert body["endpoint"] == PRODUCTS
