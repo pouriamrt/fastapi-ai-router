@@ -251,6 +251,7 @@ class AIRouter:
             llm_latency_ms=llm_latency_ms,
             dispatch_latency_ms=dispatch_latency_ms,
             result_status=result_status,
+            confidence=tool_call.confidence,
         )
         try:
             await self._on_decision(decision)

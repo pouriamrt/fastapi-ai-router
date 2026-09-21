@@ -35,6 +35,7 @@ def test_on_decision_fires_with_full_payload(sample_app):
     assert d.prompt_tokens == 12
     assert d.completion_tokens == 3
     assert d.result_status == 200
+    assert d.confidence is None
 
 
 def test_on_error_fires_for_no_route_matched(sample_app):
@@ -73,3 +74,25 @@ def test_on_error_fires_for_unknown_tool(sample_app):
     client.post("/ai", json={"query": "x"})
     assert len(captured) == 1
     assert captured[0].error_type == "unknown_tool"
+
+
+def test_on_decision_carries_backend_confidence(sample_app):
+    captured: list[Decision] = []
+
+    async def hook(d: Decision) -> None:
+        captured.append(d)
+
+    backend = make_backend(
+        ToolCall(
+            name="list_products",
+            args={},
+            reasoning=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            model="fake",
+            confidence=0.93,
+        )
+    )
+    AIRouter(sample_app, llm=backend, mode="decorator", on_decision=hook)
+    TestClient(sample_app).post("/ai", json={"query": "list products"})
+    assert captured[0].confidence == 0.93

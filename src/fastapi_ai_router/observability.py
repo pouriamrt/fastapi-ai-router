@@ -23,6 +23,7 @@ class Decision:
     llm_latency_ms: int
     dispatch_latency_ms: int | None
     result_status: int | None
+    confidence: float | None = None
 
 
 @dataclass(frozen=True)

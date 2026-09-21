@@ -35,6 +35,7 @@ class ToolCall:
     prompt_tokens: int
     completion_tokens: int
     model: str
+    confidence: float | None = None
 
 
 class LLMBackend(Protocol):
