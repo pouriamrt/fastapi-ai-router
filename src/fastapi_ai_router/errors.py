@@ -48,6 +48,4 @@ class ToolSchemaTooLarge(AIRouterError):
     def __init__(self, tool_count: int, approx_tokens: int) -> None:
         self.tool_count = tool_count
         self.approx_tokens = approx_tokens
-        super().__init__(
-            f"Tool schema is too large: {tool_count} tools, ~{approx_tokens} tokens."
-        )
+        super().__init__(f"Tool schema is too large: {tool_count} tools, ~{approx_tokens} tokens.")

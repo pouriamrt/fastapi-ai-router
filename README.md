@@ -29,12 +29,13 @@ from fastapi_ai_router.backends.litellm import LiteLLMBackend
 
 app = FastAPI()
 
+
 @app.post("/orders/{order_id}/cancel")
 @ai_route(description="Cancel a customer's order.")
-def cancel_order(order_id: int, reason: str | None = None):
-    ...
+def cancel_order(order_id: int, reason: str | None = None): ...
 
-AIRouter(app, llm=LiteLLMBackend(model="gpt-4o-mini"))   # one line to enable
+
+AIRouter(app, llm=LiteLLMBackend(model="gpt-4o-mini"))  # one line to enable
 ```
 
 ```bash
@@ -206,10 +207,12 @@ flowchart LR
 ```python
 from fastapi_ai_router import AIRouter, LLMBackend, Message, ToolCall, ToolDef
 
+
 class MyBackend:
     async def call(self, messages: list[Message], tools: list[ToolDef]) -> ToolCall | None:
         # call your LLM, parse the response, return ToolCall(...) or None
         ...
+
 
 AIRouter(app, llm=MyBackend())
 ```
@@ -231,11 +234,14 @@ The whole test suite uses `FakeLLMBackend` — **74 tests pass deterministically
 ```python
 from fastapi_ai_router import AIRouter, Decision, ErrorEvent
 
+
 async def to_langfuse(d: Decision) -> None:
     await langfuse_client.log(...)
 
+
 async def to_sentry(e: ErrorEvent) -> None:
     sentry_sdk.capture_message(...)
+
 
 AIRouter(app, llm=..., on_decision=to_langfuse, on_error=to_sentry)
 ```

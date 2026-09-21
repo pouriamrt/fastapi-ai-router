@@ -37,19 +37,11 @@ def split_by_location(
     return path, query, body
 
 
-def _forward(
-    request_headers: Mapping[str, str], allowed: frozenset[str]
-) -> dict[str, str]:
-    return {
-        k: v
-        for k, v in request_headers.items()
-        if k.lower() in allowed
-    }
+def _forward(request_headers: Mapping[str, str], allowed: frozenset[str]) -> dict[str, str]:
+    return {k: v for k, v in request_headers.items() if k.lower() in allowed}
 
 
-def _unwrap_body_field_names(
-    body: dict[str, Any], locations: Mapping[str, str]
-) -> dict[str, Any]:
+def _unwrap_body_field_names(body: dict[str, Any], locations: Mapping[str, str]) -> dict[str, Any]:
     """Reverse the *_body collision rename when constructing the loopback body.
 
     A field is treated as a renamed-due-to-collision body field if all of:

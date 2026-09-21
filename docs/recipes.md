@@ -7,6 +7,7 @@ Implement the `LLMBackend` Protocol:
 ```python
 from fastapi_ai_router import LLMBackend, Message, ToolCall, ToolDef
 
+
 class MyBackend:
     async def call(self, messages: list[Message], tools: list[ToolDef]) -> ToolCall | None:
         # call your LLM, parse the response, return ToolCall(...) or None
@@ -31,6 +32,7 @@ AIRouter(app, llm=..., forward_headers=DEFAULT_FORWARD_HEADERS | {"x-tenant-id"}
 ```python
 async def to_langfuse(d):
     await langfuse_client.log(...)
+
 
 AIRouter(app, llm=..., on_decision=to_langfuse)
 ```

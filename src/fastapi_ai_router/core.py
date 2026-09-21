@@ -162,9 +162,7 @@ class AIRouter:
 
         spec = registry.get(tool_call.name)
         if spec is None:
-            await self._fire_error(
-                request_id, query, "unknown_tool", tool_call.name, None
-            )
+            await self._fire_error(request_id, query, "unknown_tool", tool_call.name, None)
             return _json_response(
                 422,
                 {
@@ -198,11 +196,7 @@ class AIRouter:
             ret = Response(
                 content=response.content,
                 status_code=response.status_code,
-                headers={
-                    "content-type": response.headers.get(
-                        "content-type", "application/json"
-                    )
-                },
+                headers={"content-type": response.headers.get("content-type", "application/json")},
             )
         else:
             envelope = wrap_envelope(

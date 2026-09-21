@@ -28,9 +28,7 @@ class ModeConfig:
 
     def __post_init__(self) -> None:
         if self.mode not in ("decorator", "tag", "all"):
-            raise ValueError(
-                f"mode must be one of 'decorator', 'tag', 'all'; got {self.mode!r}"
-            )
+            raise ValueError(f"mode must be one of 'decorator', 'tag', 'all'; got {self.mode!r}")
 
 
 def _ai_meta(route: APIRoute) -> AIRouteMeta | None:

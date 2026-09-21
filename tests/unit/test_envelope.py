@@ -36,9 +36,7 @@ def test_wraps_non_json_response_as_text():
         content=b"plain text",
         headers={"content-type": "text/plain"},
     )
-    body = wrap_envelope(
-        endpoint="GET /notes", args={}, reasoning=None, response=resp
-    )
+    body = wrap_envelope(endpoint="GET /notes", args={}, reasoning=None, response=resp)
     assert body["result"] == "plain text"
 
 

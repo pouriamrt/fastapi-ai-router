@@ -81,5 +81,6 @@ def test_build_tools_returns_openai_compatible_shape():
 
 def test_invalid_mode_raises_at_construction():
     import pytest
+
     with pytest.raises(ValueError, match="mode"):
         ModeConfig(mode="bogus")  # type: ignore[arg-type]

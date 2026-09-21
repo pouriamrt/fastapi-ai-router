@@ -23,9 +23,7 @@ class AIRouteMeta:
     expose: bool = True
 
 
-def ai_route(
-    *, description: str | None = None, expose: bool = True
-) -> Callable[[F], F]:
+def ai_route(*, description: str | None = None, expose: bool = True) -> Callable[[F], F]:
     """Mark a FastAPI route as AI-callable.
 
     Arguments:

@@ -46,5 +46,6 @@ def test_tool_def_shape():
 
 def test_llm_backend_protocol_signature():
     import inspect
+
     sig = inspect.signature(LLMBackend.call)
     assert {"self", "messages", "tools"} <= set(sig.parameters)

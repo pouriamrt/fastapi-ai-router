@@ -69,9 +69,17 @@ async def test_decision_hook_is_async_callable_protocol():
 
     hook: DecisionHook = my_hook
     sample = Decision(
-        request_id="r", query="q", tool_name=None, args={}, reasoning=None,
-        model="fake", prompt_tokens=0, completion_tokens=0,
-        llm_latency_ms=0, dispatch_latency_ms=None, result_status=None,
+        request_id="r",
+        query="q",
+        tool_name=None,
+        args={},
+        reasoning=None,
+        model="fake",
+        prompt_tokens=0,
+        completion_tokens=0,
+        llm_latency_ms=0,
+        dispatch_latency_ms=None,
+        result_status=None,
     )
     await hook(sample)
     assert captured == [sample]
@@ -86,7 +94,11 @@ async def test_error_hook_is_async_callable_protocol():
 
     hook: ErrorHook = my_hook
     sample = ErrorEvent(
-        request_id="r", query="q", error_type="x", error_detail="x", upstream=None,
+        request_id="r",
+        query="q",
+        error_type="x",
+        error_detail="x",
+        upstream=None,
     )
     await hook(sample)
     assert captured == [sample]
