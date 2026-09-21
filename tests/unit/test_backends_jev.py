@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import pytest
@@ -372,3 +373,30 @@ async def test_client_is_created_once_from_settings(monkeypatch):
     await backend.call(_messages("hi"), TOOLS)
     await backend.call(_messages("hi"), TOOLS)
     assert made == [{"api_key": "k", "model": "jev-1.13.0"}]
+
+
+def test_api_key_does_not_appear_in_repr():
+    assert "SECRET-XYZ" not in repr(JevBackend(api_key="SECRET-XYZ"))
+
+
+def test_client_rebuilt_when_event_loop_changes(monkeypatch):
+    made = []
+
+    def factory(**kwargs):
+        made.append(kwargs)
+        return JevStubClient({ROUTE_QID: (NO_ROUTE, 1.0)})
+
+    monkeypatch.setattr(jev, "AsyncTypeSafeClient", factory)
+    backend = JevBackend(api_key="k")
+    asyncio.run(backend.call(_messages("hi"), TOOLS))
+    asyncio.run(backend.call(_messages("hi"), TOOLS))
+    assert len(made) == 2
+
+
+def test_injected_client_is_never_replaced_across_loops():
+    stub = JevStubClient({ROUTE_QID: (NO_ROUTE, 1.0)})
+    backend = JevBackend(client=stub)
+    asyncio.run(backend.call(_messages("hi"), TOOLS))
+    asyncio.run(backend.call(_messages("hi"), TOOLS))
+    assert backend.client is stub
+    assert len(stub.calls) == 2

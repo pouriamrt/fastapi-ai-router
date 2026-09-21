@@ -9,10 +9,11 @@ code reads the answers for the route Jev picked. Install with
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import re
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 try:
@@ -244,11 +245,13 @@ class JevBackend(LLMBackend):
     """
 
     model: str = "jev-latest"
-    api_key: str | None = None  # None: the SDK reads TYPESAFE_API_KEY
+    api_key: str | None = field(default=None, repr=False)  # None: the SDK reads TYPESAFE_API_KEY
     min_confidence: float = 0.5
     fallback: LLMBackend | None = None
     max_span_words: int = 6
     client: AsyncTypeSafeClient | None = None
+    _owns_client: bool = field(default=False, init=False, repr=False)
+    _client_loop: asyncio.AbstractEventLoop | None = field(default=None, init=False, repr=False)
 
     async def call(
         self,
@@ -281,10 +284,14 @@ class JevBackend(LLMBackend):
 
     async def _ask(self, query: str, questions: dict[str, Choice]) -> SystemOneResponse:
         try:
-            if self.client is None:
-                # ponytail: one shared client, never closed; AIRouter has no shutdown hook.
+            loop = asyncio.get_running_loop()
+            if self.client is None or (self._owns_client and self._client_loop is not loop):
+                # ponytail: one shared client per event loop, never closed (AIRouter
+                # has no shutdown hook); an injected client is never replaced.
                 self.client = AsyncTypeSafeClient(api_key=self.api_key, model=self.model)
-            return await self.client.system_one(query, questions)
+                self._owns_client, self._client_loop = True, loop
+            client = self.client
+            return await client.system_one(query, questions)
         except TypeSafeError as exc:
             raise LLMBackendError(f"Jev call failed: {exc}", upstream=exc) from exc
 
