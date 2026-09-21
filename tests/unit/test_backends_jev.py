@@ -1,17 +1,23 @@
 import pytest
+from typesafe_sdk import TypeSafeError
 
+from fastapi_ai_router.backends import ToolCall, jev
+from fastapi_ai_router.backends.fake import FakeLLMBackend
 from fastapi_ai_router.backends.jev import (
     MAX_CHOICE_OPTIONS,
     NO_ROUTE,
     NOT_STATED,
     ROUTE_QID,
     ArgSlot,
+    JevBackend,
     build_questions,
     build_slots,
     candidates,
     classify,
     coerce,
 )
+from fastapi_ai_router.errors import LLMBackendError
+from tests.conftest import JevStubClient
 
 CANCEL_TOOL = {
     "type": "function",
@@ -175,3 +181,134 @@ def test_coerce(kind, raw, expected):
 def test_coerce_enum_maps_back_to_original_value():
     assert coerce(_slot("enum", (1, 2)), "2") == 2
     assert coerce(_slot("enum", ("s",)), "xl") is None
+
+
+def _messages(query):
+    return [
+        {"role": "system", "content": "You are a router."},
+        {"role": "user", "content": query},
+    ]
+
+
+async def test_call_routes_and_extracts_args_in_one_request():
+    stub = JevStubClient(
+        {
+            ROUTE_QID: ("cancel_order", 0.98),
+            "arg0": ("123", 1.0),
+            "arg1": ("because it was a duplicate", 0.6),
+        }
+    )
+    query = "cancel order 123 because it was a duplicate"
+    result = await JevBackend(client=stub).call(_messages(query), TOOLS)
+    assert result == ToolCall(
+        name="cancel_order",
+        args={"order_id": 123, "reason": "because it was a duplicate"},
+        reasoning=None,
+        prompt_tokens=100,
+        completion_tokens=10,
+        model="jev-1.13.0",
+        confidence=0.98,
+    )
+    assert len(stub.calls) == 1
+    state, questions = stub.calls[0]
+    assert state == query
+    assert set(questions) == {ROUTE_QID, "arg0", "arg1", "arg2", "arg3"}
+
+
+async def test_call_omits_optional_not_stated_args():
+    stub = JevStubClient(
+        {ROUTE_QID: ("cancel_order", 1.0), "arg0": ("77", 1.0), "arg1": (NOT_STATED, 1.0)}
+    )
+    result = await JevBackend(client=stub).call(_messages("cancel order 77"), TOOLS)
+    assert result is not None
+    assert result.args == {"order_id": 77}
+
+
+async def test_confident_no_match_returns_none_without_calling_fallback():
+    fallback = FakeLLMBackend(returns=None)
+    stub = JevStubClient({ROUTE_QID: (NO_ROUTE, 1.0)})
+    backend = JevBackend(client=stub, fallback=fallback)
+    assert await backend.call(_messages("weather in Paris"), TOOLS) is None
+    assert fallback.calls == []
+
+
+async def test_low_confidence_without_fallback_returns_none():
+    stub = JevStubClient({ROUTE_QID: ("cancel_order", 0.3)})
+    assert await JevBackend(client=stub).call(_messages("hmm"), TOOLS) is None
+
+
+async def test_low_confidence_hands_all_tools_to_fallback():
+    llm_call = ToolCall(
+        name="list_products",
+        args={},
+        reasoning="r",
+        prompt_tokens=5,
+        completion_tokens=1,
+        model="llm",
+    )
+    fallback = FakeLLMBackend(returns=llm_call)
+    stub = JevStubClient({ROUTE_QID: ("cancel_order", 0.3)})
+    result = await JevBackend(client=stub, fallback=fallback).call(_messages("hmm"), TOOLS)
+    assert result == llm_call
+    assert fallback.calls[0].tools == TOOLS
+
+
+async def test_missing_required_arg_narrows_fallback_to_chosen_route():
+    llm_call = ToolCall(
+        name="cancel_order",
+        args={"order_id": 5},
+        reasoning=None,
+        prompt_tokens=5,
+        completion_tokens=1,
+        model="llm",
+    )
+    fallback = FakeLLMBackend(returns=llm_call)
+    # "cancel my order" has no digits, so order_id gets no question at all.
+    stub = JevStubClient({ROUTE_QID: ("cancel_order", 0.9), "arg1": (NOT_STATED, 1.0)})
+    backend = JevBackend(client=stub, fallback=fallback)
+    result = await backend.call(_messages("cancel my order"), TOOLS)
+    assert fallback.calls[0].tools == [CANCEL_TOOL]
+    assert result is not None
+    assert (result.model, result.confidence) == ("llm", 0.9)
+
+
+async def test_missing_required_arg_without_fallback_returns_partial_call():
+    stub = JevStubClient({ROUTE_QID: ("cancel_order", 0.9), "arg1": (NOT_STATED, 1.0)})
+    result = await JevBackend(client=stub).call(_messages("cancel my order"), TOOLS)
+    assert result is not None
+    assert (result.name, result.args) == ("cancel_order", {})
+
+
+async def test_unsupported_required_param_goes_to_fallback():
+    fallback = FakeLLMBackend(returns=None)
+    stub = JevStubClient({ROUTE_QID: ("tag_item", 0.95)})
+    await JevBackend(client=stub, fallback=fallback).call(_messages("tag it red"), [TAGS_TOOL])
+    assert fallback.calls[0].tools == [TAGS_TOOL]
+
+
+async def test_sdk_errors_become_llm_backend_errors():
+    stub = JevStubClient(TypeSafeError("rate limited"))
+    with pytest.raises(LLMBackendError) as ei:
+        await JevBackend(client=stub).call(_messages("cancel order 1"), TOOLS)
+    assert isinstance(ei.value.upstream, TypeSafeError)
+
+
+async def test_missing_expected_answer_raises():
+    # order_id had a candidate ("1"), so an answer for arg0 was expected.
+    stub = JevStubClient({ROUTE_QID: ("cancel_order", 0.9)})
+    with pytest.raises(LLMBackendError, match="arg0"):
+        await JevBackend(client=stub).call(_messages("cancel order 1"), TOOLS)
+
+
+async def test_client_is_created_once_from_settings(monkeypatch):
+    made = []
+
+    def factory(**kwargs):
+        made.append(kwargs)
+        return JevStubClient({ROUTE_QID: (NO_ROUTE, 1.0)})
+
+    monkeypatch.setattr(jev, "AsyncTypeSafeClient", factory)
+    backend = JevBackend(api_key="k", model="jev-1.13.0")
+    await backend.call(_messages("hi"), TOOLS)
+    await backend.call(_messages("hi"), TOOLS)
+    assert made == [{"api_key": "k", "model": "jev-1.13.0"}]

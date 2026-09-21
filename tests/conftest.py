@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
+from typesafe_sdk import SystemOneResponse
 
 from fastapi_ai_router.backends.fake import FakeLLMBackend
 from fastapi_ai_router.decorator import ai_route
@@ -59,3 +60,31 @@ def sample_app() -> FastAPI:
 
 def make_backend(returns: object) -> FakeLLMBackend:
     return FakeLLMBackend(returns=returns)
+
+
+class JevStubClient:
+    """Stands in for typesafe_sdk.AsyncTypeSafeClient: canned Choice answers, records requests."""
+
+    def __init__(self, answers: dict[str, tuple[str, float]] | BaseException) -> None:
+        self.answers = answers
+        self.calls: list[tuple[Any, dict[str, Any]]] = []
+
+    async def system_one(self, state: Any, questions: dict[str, Any]) -> SystemOneResponse:
+        self.calls.append((state, questions))
+        if isinstance(self.answers, BaseException):
+            raise self.answers
+        return SystemOneResponse.model_validate(
+            {
+                "model": "jev-1.13.0",
+                "usage": {"input_tokens": 100, "output_tokens": 10},
+                "answers": {
+                    qid: {
+                        "type": "choice",
+                        "choice": choice,
+                        "confidence": conf,
+                        "probabilities": {choice: conf},
+                    }
+                    for qid, (choice, conf) in self.answers.items()
+                },
+            }
+        )

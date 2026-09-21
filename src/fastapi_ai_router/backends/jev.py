@@ -9,19 +9,27 @@ code reads the answers for the route Jev picked. Install with
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
 try:
-    from typesafe_sdk import Choice
+    from typesafe_sdk import (
+        AsyncTypeSafeClient,
+        Choice,
+        ChoiceAnswer,
+        SystemOneResponse,
+        TypeSafeError,
+    )
 except ImportError as exc:  # pragma: no cover
     raise ImportError(
         "JevBackend requires the 'jev' extra. Install with: pip install fastapi-ai-router[jev]"
     ) from exc
 
-from fastapi_ai_router.backends import ToolDef
+from fastapi_ai_router.backends import LLMBackend, Message, ToolCall, ToolDef
+from fastapi_ai_router.errors import LLMBackendError
 
 NOT_STATED = "not_stated"
 NO_ROUTE = "none_of_the_above"
@@ -172,3 +180,106 @@ def coerce(slot: ArgSlot, raw: str) -> Any:
     if slot.kind == "enum":
         return {str(v): v for v in slot.enum_values}.get(raw)
     return raw
+
+
+def _last_user_content(messages: list[Message]) -> str:
+    for message in reversed(messages):
+        if message["role"] == "user":
+            return message["content"]
+    return ""
+
+
+def _answer(response: SystemOneResponse, qid: str) -> ChoiceAnswer:
+    answer = response.choices.get(qid)
+    if answer is None:
+        raise LLMBackendError(f"Jev response is missing answer {qid!r}")
+    return answer
+
+
+def collect_args(response: SystemOneResponse, slots: list[ArgSlot]) -> tuple[dict[str, Any], bool]:
+    """Typed args for one route, and whether a required param came back empty."""
+    args: dict[str, Any] = {}
+    missing_required = False
+    for slot in slots:
+        value = None
+        if slot.options:
+            choice = _answer(response, slot.qid).choice
+            value = None if choice == NOT_STATED else coerce(slot, choice)
+        if value is None:
+            missing_required = missing_required or slot.required
+        else:
+            args[slot.param] = value
+    return args, missing_required
+
+
+@dataclass
+class JevBackend(LLMBackend):
+    """Routes with Jev in one request; optionally hands the hard cases to an LLM.
+
+    `fallback` runs only when Jev is unsure of the route (it gets every tool) or
+    the chosen route needs a value Jev couldn't supply (it gets that route's tool
+    only). With no fallback, the router never calls an LLM.
+    """
+
+    model: str = "jev-latest"
+    api_key: str | None = None  # None: the SDK reads TYPESAFE_API_KEY
+    min_confidence: float = 0.5
+    fallback: LLMBackend | None = None
+    max_span_words: int = 6
+    client: AsyncTypeSafeClient | None = None
+
+    async def call(
+        self,
+        messages: list[Message],
+        tools: list[ToolDef],
+    ) -> ToolCall | None:
+        query = _last_user_content(messages)
+        slots = build_slots(query, tools, self.max_span_words)
+        response = await self._ask(query, build_questions(tools, slots))
+        route = _answer(response, ROUTE_QID)
+        if route.confidence < self.min_confidence:
+            return await self._fall_back(messages, tools, confidence=None)
+        if route.choice == NO_ROUTE:
+            return None
+        route_slots = [s for s in slots if s.route == route.choice]
+        args, missing_required = collect_args(response, route_slots)
+        if missing_required and self.fallback is not None:
+            narrowed = [t for t in tools if t["function"]["name"] == route.choice]
+            return await self._fall_back(messages, narrowed, confidence=route.confidence)
+        return ToolCall(
+            name=route.choice,
+            args=args,
+            reasoning=None,
+            # Usage.*_tokens is Optional in the SDK; Jev always reports them in practice.
+            prompt_tokens=response.usage.input_tokens or 0,
+            completion_tokens=response.usage.output_tokens or 0,
+            model=response.model,
+            confidence=route.confidence,
+        )
+
+    async def _ask(self, query: str, questions: dict[str, Choice]) -> SystemOneResponse:
+        try:
+            if self.client is None:
+                # ponytail: one shared client, never closed; AIRouter has no shutdown hook.
+                self.client = AsyncTypeSafeClient(api_key=self.api_key, model=self.model)
+            return await self.client.system_one(query, questions)
+        except TypeSafeError as exc:
+            raise LLMBackendError(f"Jev call failed: {exc}", upstream=exc) from exc
+
+    async def _fall_back(
+        self,
+        messages: list[Message],
+        tools: list[ToolDef],
+        *,
+        confidence: float | None,
+    ) -> ToolCall | None:
+        if self.fallback is None:
+            return None
+        result = await self.fallback.call(messages, tools)
+        if result is None or confidence is None:
+            return result
+        # Jev still chose the route; only the argument filling was delegated.
+        return dataclasses.replace(result, confidence=confidence)
+
+
+__all__ = ["JevBackend"]
