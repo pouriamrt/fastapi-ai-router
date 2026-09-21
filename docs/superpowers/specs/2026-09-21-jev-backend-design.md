@@ -55,7 +55,7 @@ The module holds small pure functions (param classification, candidate generatio
 
 2. **Classify each parameter** from its JSON schema:
    - Unwrap `anyOf: [X, {"type": "null"}]` to `X`.
-   - Resolve `{"$ref": "#/$defs/Name"}` against the property's own `$defs`.
+   - Resolve `{"$ref": "#/$defs/Name"}` against the property's own `$defs` (query params carry them there), then the parameters object's top-level `$defs` (body-model fields, after the fix below).
    - Supported: `integer`, `number`, `boolean`, `string`, and `enum`. Anything else (`object`, `array`, an unresolvable `$ref`) is unsupported.
 
 3. **Build candidates** from the query:
@@ -103,7 +103,7 @@ The module holds small pure functions (param classification, candidate generatio
 
 Both affect every backend today, LiteLLM included, and both were reproduced on 2026-09-21. Each gets its own `fix:` commit and regression test.
 
-1. **Dangling `$ref` on body-model enums.** `schema.py` flattens a single body model's `properties` but drops the model's `$defs`, so an enum field ships as `{"$ref": "#/$defs/Color"}` with nothing to resolve it against. The fix copies the needed `$defs` into each flattened property.
+1. **Dangling `$ref` on body-model enums.** `schema.py` flattens a single body model's `properties` but drops the model's `$defs`, so an enum field ships as `{"$ref": "#/$defs/Color"}` with nothing to resolve it against. `#/$defs/...` resolves from the document root, so the fix hoists the body model's `$defs` onto the top-level parameters object, where those refs point.
 
 2. **Missing path argument returns 500.** `dispatcher.py` fills the URL with `path_template.format(...)`. When the backend omits a path parameter, that raises a bare `KeyError`, and the caller gets `500 {"error": "dispatch_error", "detail": "'order_id'"}`. A missing query or body parameter already gets FastAPI's 422. The fix checks for missing path parameters before formatting, and core returns `422 {"error": "missing_path_param", "missing": ["order_id"], "endpoint": "POST /orders/{order_id}/cancel"}`. It fires `on_error` with `error_type="missing_path_param"`.
 
