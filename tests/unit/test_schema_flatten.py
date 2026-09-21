@@ -87,7 +87,7 @@ def test_combined_path_query_body_route():
     assert "reason" in spec.param_locations or "order" in spec.param_locations
 
 
-def test_body_as_list_is_wrapped():
+def test_lone_list_body_is_sent_whole():
     app = FastAPI()
 
     @app.post("/bulk", name="bulk_create")
@@ -97,9 +97,52 @@ def test_body_as_list_is_wrapped():
     spec = route_to_spec(_route_named(app, "bulk_create"))
     assert spec is not None
 
-    assert "items" in spec.param_locations
-    assert spec.param_locations["items"] == "body"
+    # FastAPI expects a lone, non-embedded body param as the bare value.
+    assert spec.param_locations["items"] == "whole_body"
     assert spec.parameters_schema["properties"]["items"]["type"] == "array"
+
+
+def test_embedded_list_body_stays_keyed():
+    app = FastAPI()
+
+    @app.post("/bulk", name="bulk_create")
+    def bulk_create(items: list[str] = Body(embed=True)) -> dict:  # noqa: B008
+        return {"count": len(items)}
+
+    spec = route_to_spec(_route_named(app, "bulk_create"))
+    assert spec is not None
+    assert spec.param_locations["items"] == "body"
+
+
+def test_embedded_model_body_is_not_flattened():
+    app = FastAPI()
+
+    class Item(BaseModel):
+        name: str
+
+    @app.post("/items", name="create_item")
+    def create_item(item: Item = Body(embed=True)) -> dict:  # noqa: B008
+        return {}
+
+    spec = route_to_spec(_route_named(app, "create_item"))
+    assert spec is not None
+    assert spec.param_locations == {"item": "body"}
+    assert "item" in spec.parameters_schema["required"]
+
+
+def test_optional_model_body_is_sent_whole():
+    app = FastAPI()
+
+    class Item(BaseModel):
+        name: str
+
+    @app.post("/items", name="upsert_item")
+    def upsert_item(item: Item | None = None) -> dict:
+        return {}
+
+    spec = route_to_spec(_route_named(app, "upsert_item"))
+    assert spec is not None
+    assert spec.param_locations == {"item": "whole_body"}
 
 
 def test_path_body_name_collision_renames_body_field():

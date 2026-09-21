@@ -34,7 +34,8 @@ def split_by_location(
             query[k] = v
         elif loc == "body":
             body[k] = v
-        # unknown locations silently dropped — defensive against LLM hallucinations.
+        # "whole_body" is sent by dispatch() itself; other unknown locations are
+        # dropped — defensive against LLM hallucinations.
     return path, query, body
 
 
@@ -84,6 +85,10 @@ async def dispatch(
     url = spec.path_template.format(**encoded_path_args)
 
     body_args = _unwrap_body_field_names(body_args, spec.param_locations)
+    whole_body = next(
+        (name for name, loc in spec.param_locations.items() if loc == "whole_body"), None
+    )
+    json_body = args.get(whole_body) if whole_body else (body_args or None)
     headers = _forward(request_headers, forward)
 
     async with httpx.AsyncClient(
@@ -94,7 +99,7 @@ async def dispatch(
             method=spec.method,
             url=url,
             params=query_args or None,
-            json=body_args if body_args else None,
+            json=json_body,
             headers=headers,
         )
 

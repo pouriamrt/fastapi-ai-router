@@ -200,3 +200,31 @@ async def test_dispatch_treats_none_path_arg_as_missing():
             forward=frozenset(),
         )
     assert ei.value.missing == ("order_id",)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_sends_whole_body_as_the_bare_value():
+    app = FastAPI()
+
+    @app.post("/items/{item_id}/tags")
+    def set_tags(item_id: int, tags: list[str]) -> dict:
+        return {"item_id": item_id, "tags": tags}
+
+    spec = RouteSpec(
+        name="set_tags",
+        description="",
+        method="POST",
+        path_template="/items/{item_id}/tags",
+        parameters_schema={"type": "object"},
+        param_locations={"item_id": "path", "tags": "whole_body"},
+        handler=lambda: None,
+    )
+    response = await dispatch(
+        spec=spec,
+        args={"item_id": 7, "tags": ["red", "sale"]},
+        app=app,
+        request_headers={},
+        forward=frozenset(),
+    )
+    assert response.status_code == 200
+    assert response.json() == {"item_id": 7, "tags": ["red", "sale"]}

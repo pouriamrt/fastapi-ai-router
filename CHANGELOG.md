@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - A backend that leaves out a path argument now gets `422 missing_path_param` instead of `500 dispatch_error`.
 - Enum fields on flattened body models keep their `$defs`, so their `$ref`s resolve.
+- A route whose only body param isn't a plain model (a list, dict, scalar, or `Model | None`) now receives the bare value FastAPI expects, and a `Body(embed=True)` model is sent keyed by name. These shapes used to fail with 422, and a lone `dict` body silently received `{name: value}` instead of the value.
 
 ### Changed
 - Dependencies refreshed. Dev-tool floors raised to ruff 0.16, mypy 2.3, pytest 9.1.

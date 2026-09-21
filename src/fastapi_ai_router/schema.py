@@ -17,7 +17,9 @@ from pydantic import BaseModel, TypeAdapter
 
 from fastapi_ai_router.decorator import AI_ROUTE_ATTR, AIRouteMeta
 
-ParamLocation = Literal["path", "query", "body"]
+# "whole_body": a lone, non-embedded body param. FastAPI reads the request body
+# as that param's bare value, not as {name: value}.
+ParamLocation = Literal["path", "query", "body", "whole_body"]
 
 
 @dataclass(frozen=True)
@@ -86,6 +88,11 @@ def _is_required(param: Any) -> bool:
     return False
 
 
+def _is_embedded(param: Any) -> bool:
+    """True for `Body(embed=True)`: FastAPI then expects {name: value} even when alone."""
+    return bool(getattr(getattr(param, "field_info", None), "embed", False))
+
+
 def _field_schema(param: Any) -> dict[str, Any]:
     """Convert a FastAPI ModelField to a JSON Schema fragment via TypeAdapter."""
     annotation = _annotation_of(param)
@@ -119,12 +126,15 @@ def _build_parameters_schema(
             required.append(param.name)
         locations[param.name] = "query"
 
-    # Body params: single Pydantic model → flatten; otherwise wrap by name.
+    # Body params mirror FastAPI's wire shape: a lone, non-embedded model is
+    # flattened to its fields; any other lone, non-embedded param is the whole
+    # body; embedded or multiple params are keyed by name.
     body_params = list(route.dependant.body_params or [])
     if len(body_params) == 1:
         bp = body_params[0]
         annotation = _annotation_of(bp)
-        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        embedded = _is_embedded(bp)
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel) and not embedded:
             schema = annotation.model_json_schema()
             # Field schemas point at "#/$defs/..."; hoist the defs so those refs resolve.
             defs.update(schema.get("$defs") or {})
@@ -137,14 +147,14 @@ def _build_parameters_schema(
                     required.append(emit_name)
                 locations[emit_name] = "body"
         else:
-            # Body-as-list / scalar / dict — wrap under the param name.
+            # List / dict / scalar / optional model: exposed to the LLM under the param name.
             wrap_name = bp.name
             if wrap_name in locations:
                 wrap_name = f"{bp.name}_body"
             properties[wrap_name] = _field_schema(bp)
             if _is_required(bp):
                 required.append(wrap_name)
-            locations[wrap_name] = "body"
+            locations[wrap_name] = "body" if embedded else "whole_body"
     else:
         # Multiple Body() params — each becomes a top-level body field.
         for bp in body_params:
