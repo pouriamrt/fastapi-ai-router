@@ -59,13 +59,13 @@ The module holds small pure functions (param classification, candidate generatio
    - Supported: `integer`, `number`, `boolean`, `string`, and `enum`. Anything else (`object`, `array`, an unresolvable `$ref`) is unsupported.
 
 3. **Build candidates** from the query:
-   - `integer`: every integer token, e.g. `#4521,` gives `4521`.
-   - `number`: every integer or decimal token.
-   - `string`: every contiguous word n-gram up to `max_span_words` long, punctuation stripped, de-duplicated.
+   - `integer`: every integer token, including a leading minus and comma thousands separators, e.g. `#4521,` gives `4521`, `1,000` gives `1,000` (coerced to `1000`). A dash inside a word (`order-123`) or between two numbers (`5-10`) is not a sign.
+   - `number`: the same as `integer`, plus decimals and a leading-dot decimal (`.5`), e.g. `$1,299.99` gives `1,299.99` (coerced to `1299.99`).
+   - `string`: every contiguous word n-gram up to `max_span_words` long, punctuation stripped, de-duplicated. Spans are generated lazily and generation stops as soon as the cap is reached, so a long query is never fully materialized.
    - `enum`: the enum values.
    - `boolean`: `true`, `false`.
 
-   Every question also gets a `not_stated` option. Candidates are capped at 254 so the total stays within Jev's 255-option limit. When a parameter has no candidates at all, the backend skips its question and treats it as `not_stated`.
+   Every question also gets a `not_stated` option. Candidates are capped at 254 so the total stays within Jev's 255-option limit. When a parameter has no candidates at all, the backend skips its question and treats it as `not_stated`. A max query length in core is the remaining bound on this work (follow-up, not this wave).
 
 4. **Send one request:** a `route` Choice over the tool names plus `none_of_the_above`, and one Choice per supported (route, param) pair.
 

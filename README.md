@@ -254,6 +254,13 @@ AIRouter(app, llm=JevBackend(fallback=LiteLLMBackend(model="gpt-4o-mini")))
 | Route confidence below `min_confidence` (default 0.5) | 422 `no_route_matched` | the LLM sees every tool |
 | Route chosen, a required argument missing | 422 naming the missing field | the LLM sees only that route's tool |
 
+**Limits:**
+
+- Long queries are cut to the first 254 candidate spans per parameter.
+- String values are taken from the query's own words, punctuation stripped. An email address or similar won't survive intact, so route params like that through an LLM fallback.
+- Jev reads text literally and isn't hardened against adversarial input; keep route-level auth regardless of backend.
+- The SDK's default timeout is 10 s with retries. Tune it by passing your own client: `JevBackend(client=AsyncTypeSafeClient(timeout=..., retry=...))`.
+
 Your `on_decision` hook receives Jev's route confidence as `Decision.confidence`.
 
 ---
@@ -316,7 +323,7 @@ Saying "we don't do this yet" up front is itself a positioning choice — see [d
 
 - ✅ Core: introspection + dispatch + envelope + errors + observability
 - ✅ Three exposure modes (`decorator` / `tag` / `all`)
-- ✅ Two backends shipped: `LiteLLMBackend`, `FakeLLMBackend`
+- ✅ Backends shipped: `LiteLLMBackend`, `JevBackend`, and `FakeLLMBackend` for tests
 - ✅ Test suite passing under an 80% coverage gate, mypy strict, ruff clean
 - ✅ Examples + concepts/recipes/security docs
 
