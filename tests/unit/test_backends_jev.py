@@ -121,6 +121,42 @@ def test_candidates_drop_literal_not_stated():
     assert NOT_STATED not in candidates("reason not_stated", "string", (), 1)
 
 
+def test_candidates_integer_keeps_comma_thousands_grouping():
+    assert candidates("transfer 1,000 dollars", "integer", (), 6) == ("1,000",)
+
+
+def test_candidates_number_keeps_comma_grouping_and_decimals():
+    assert candidates("total $1,299.99", "number", (), 6) == ("1,299.99",)
+
+
+def test_candidates_integer_keeps_leading_sign():
+    assert candidates("balance -5", "integer", (), 6) == ("-5",)
+
+
+def test_candidates_integer_dash_in_a_word_is_not_a_sign():
+    assert candidates("order-123", "integer", (), 6) == ("123",)
+
+
+def test_candidates_integer_dash_between_numbers_is_not_a_sign():
+    assert candidates("pick 5-10", "integer", (), 6) == ("5", "10")
+
+
+def test_candidates_number_leading_dot_decimal():
+    assert candidates("weight .5", "number", (), 6) == (".5",)
+
+
+def test_coerce_integer_strips_comma_grouping():
+    assert coerce(_slot("integer"), "1,000") == 1000
+
+
+def test_coerce_number_strips_comma_grouping():
+    assert coerce(_slot("number"), "1,299.99") == 1299.99
+
+
+def test_coerce_number_leading_dot_decimal():
+    assert coerce(_slot("number"), ".5") == 0.5
+
+
 def test_build_slots_covers_every_route_param():
     slots = build_slots("cancel order 123", TOOLS, 6)
     assert [(s.qid, s.route, s.param, s.kind, s.required) for s in slots] == [

@@ -41,8 +41,10 @@ ParamKind = Literal["integer", "number", "boolean", "string", "enum"]
 _SCALAR_KINDS = frozenset({"integer", "number", "boolean", "string"})
 
 _WORD = re.compile(r"[\w'-]+")
-_INT = re.compile(r"\d+")
-_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+_SIGN = r"(?:(?<![\w-])-)?"  # "-5", not the dash in "order-123" / "5-10"
+_DIGITS = r"(?:\d{1,3}(?:,\d{3})+|\d+)"  # "1,000" or "1000"
+_INT = re.compile(rf"{_SIGN}{_DIGITS}")
+_NUMBER = re.compile(rf"{_SIGN}(?:{_DIGITS}(?:\.\d+)?|\.\d+)")
 
 
 @dataclass(frozen=True)
@@ -170,9 +172,9 @@ def coerce(slot: ArgSlot, raw: str) -> Any:
     """Turn Jev's chosen option into a typed value; None if it doesn't convert."""
     try:
         if slot.kind == "integer":
-            return int(raw)
+            return int(raw.replace(",", ""))
         if slot.kind == "number":
-            return float(raw)
+            return float(raw.replace(",", ""))
     except ValueError:
         return None
     if slot.kind == "boolean":
