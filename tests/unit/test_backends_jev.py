@@ -1,7 +1,11 @@
 import asyncio
 import time
+from enum import StrEnum
+from typing import Any
 
 import pytest
+from fastapi import FastAPI
+from pydantic import BaseModel
 from typesafe_sdk import TypeSafeError
 
 from fastapi_ai_router.backends import ToolCall, jev
@@ -19,7 +23,9 @@ from fastapi_ai_router.backends.jev import (
     classify,
     coerce,
 )
+from fastapi_ai_router.decorator import ai_route
 from fastapi_ai_router.errors import LLMBackendError
+from fastapi_ai_router.introspection import ModeConfig, build_registry, build_tools
 from tests.conftest import JevStubClient
 
 CANCEL_TOOL = {
@@ -191,6 +197,35 @@ def test_build_slots_bounds_and_shares_string_candidate_generation():
     assert len(slots) == 20
     assert all(len(slot.options) == MAX_CHOICE_OPTIONS - 1 for slot in slots)
     assert elapsed < 0.3
+
+
+class _Size(StrEnum):
+    small = "s"
+    medium = "m"
+
+
+class _Item(BaseModel):
+    size: _Size
+
+
+def test_build_slots_classifies_enum_from_body_model_and_query_param():
+    app = FastAPI()
+
+    @app.post("/items")
+    @ai_route(description="Create an item.")
+    def create_item(item: _Item) -> dict[str, Any]:
+        return {}
+
+    @app.get("/items")
+    @ai_route(description="List items.")
+    def list_items(size: _Size | None = None) -> dict[str, Any]:
+        return {}
+
+    tools = build_tools(build_registry(app, ModeConfig()))
+    slots = build_slots("size s please", tools, 6)
+    by_route_param = {(s.route, s.param): (s.kind, s.enum_values) for s in slots}
+    assert by_route_param[("create_item", "size")] == ("enum", ("s", "m"))
+    assert by_route_param[("list_items", "size")] == ("enum", ("s", "m"))
 
 
 def test_build_slots_marks_unsupported_types():
