@@ -34,10 +34,10 @@ A throwaway spike ran seven queries against two example routes. All seven routes
 @dataclass
 class JevBackend(LLMBackend):
     model: str = "jev-latest"
-    api_key: str | None = None  # None: SDK reads TYPESAFE_API_KEY
-    min_confidence: float = 0.5  # route-confidence gate
+    api_key: str | None = None          # None: SDK reads TYPESAFE_API_KEY
+    min_confidence: float = 0.5         # route-confidence gate
     fallback: LLMBackend | None = None  # None: never calls an LLM
-    max_span_words: int = 6  # longest n-gram offered for string params
+    max_span_words: int = 6             # longest n-gram offered for string params
     client: AsyncTypeSafeClient | None = None  # injectable; created lazily otherwise
 ```
 

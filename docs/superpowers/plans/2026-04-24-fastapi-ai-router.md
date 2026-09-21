@@ -186,7 +186,6 @@ Standard MIT license text with copyright `(c) 2026 Pouria`.
 `src/fastapi_ai_router/__init__.py`:
 ```python
 """fastapi-ai-router — turn FastAPI routes into a natural-language-callable surface."""
-
 __version__ = "0.1.0.dev0"
 ```
 
@@ -417,7 +416,9 @@ class ToolSchemaTooLarge(AIRouterError):
     def __init__(self, tool_count: int, approx_tokens: int) -> None:
         self.tool_count = tool_count
         self.approx_tokens = approx_tokens
-        super().__init__(f"Tool schema is too large: {tool_count} tools, ~{approx_tokens} tokens.")
+        super().__init__(
+            f"Tool schema is too large: {tool_count} tools, ~{approx_tokens} tokens."
+        )
 ```
 
 - [ ] **Step 4: Run tests to verify pass**
@@ -454,7 +455,8 @@ from fastapi_ai_router.decorator import ai_route, AIRouteMeta, AI_ROUTE_ATTR
 
 def test_decorator_attaches_metadata_with_defaults():
     @ai_route()
-    def cancel_order(order_id: int) -> None: ...
+    def cancel_order(order_id: int) -> None:
+        ...
 
     meta = getattr(cancel_order, AI_ROUTE_ATTR)
     assert isinstance(meta, AIRouteMeta)
@@ -464,7 +466,8 @@ def test_decorator_attaches_metadata_with_defaults():
 
 def test_decorator_records_description():
     @ai_route(description="Cancel a customer's order.")
-    def cancel_order(order_id: int) -> None: ...
+    def cancel_order(order_id: int) -> None:
+        ...
 
     meta = getattr(cancel_order, AI_ROUTE_ATTR)
     assert meta.description == "Cancel a customer's order."
@@ -472,7 +475,8 @@ def test_decorator_records_description():
 
 def test_expose_false_kill_switch():
     @ai_route(expose=False)
-    def secret_admin_action() -> None: ...
+    def secret_admin_action() -> None:
+        ...
 
     meta = getattr(secret_admin_action, AI_ROUTE_ATTR)
     assert meta.expose is False
@@ -488,15 +492,14 @@ def test_decorator_does_not_change_call_behavior():
 
 def test_meta_is_immutable():
     @ai_route(description="x")
-    def fn() -> None: ...
+    def fn() -> None:
+        ...
 
     meta = getattr(fn, AI_ROUTE_ATTR)
     import dataclasses
-
     assert dataclasses.is_dataclass(meta)
     # frozen dataclass — assignment should raise
     import pytest
-
     with pytest.raises(dataclasses.FrozenInstanceError):
         meta.expose = False  # type: ignore[misc]
 ```
@@ -537,7 +540,9 @@ class AIRouteMeta:
     expose: bool = True
 
 
-def ai_route(*, description: str | None = None, expose: bool = True) -> Callable[[F], F]:
+def ai_route(
+    *, description: str | None = None, expose: bool = True
+) -> Callable[[F], F]:
     """Mark a FastAPI route as AI-callable.
 
     Arguments:
@@ -606,7 +611,6 @@ def test_toolcall_is_frozen_dataclass():
         model="gpt-5-mini",
     )
     import dataclasses
-
     assert dataclasses.is_dataclass(tc)
     with pytest.raises(dataclasses.FrozenInstanceError):
         tc.name = "other"  # type: ignore[misc]
@@ -634,7 +638,6 @@ def test_tool_def_shape():
 def test_llm_backend_protocol_signature():
     # The protocol's call method must be async and accept messages + tools.
     import inspect
-
     sig = inspect.signature(LLMBackend.call)
     assert {"self", "messages", "tools"} <= set(sig.parameters)
 ```
@@ -951,17 +954,9 @@ async def test_decision_hook_is_async_callable_protocol():
     # should satisfy the protocol structurally (no isinstance check needed)
     hook: DecisionHook = my_hook
     sample = Decision(
-        request_id="r",
-        query="q",
-        tool_name=None,
-        args={},
-        reasoning=None,
-        model="fake",
-        prompt_tokens=0,
-        completion_tokens=0,
-        llm_latency_ms=0,
-        dispatch_latency_ms=None,
-        result_status=None,
+        request_id="r", query="q", tool_name=None, args={}, reasoning=None,
+        model="fake", prompt_tokens=0, completion_tokens=0,
+        llm_latency_ms=0, dispatch_latency_ms=None, result_status=None,
     )
     await hook(sample)
     assert captured == [sample]
@@ -976,11 +971,7 @@ async def test_error_hook_is_async_callable_protocol():
 
     hook: ErrorHook = my_hook
     sample = ErrorEvent(
-        request_id="r",
-        query="q",
-        error_type="x",
-        error_detail="x",
-        upstream=None,
+        request_id="r", query="q", error_type="x", error_detail="x", upstream=None,
     )
     await hook(sample)
     assert captured == [sample]
@@ -1017,7 +1008,7 @@ class Decision:
 
     request_id: str
     query: str
-    tool_name: str | None  # None when no tool was selected
+    tool_name: str | None       # None when no tool was selected
     args: dict[str, Any]
     reasoning: str | None
     model: str
@@ -1025,7 +1016,7 @@ class Decision:
     completion_tokens: int
     llm_latency_ms: int
     dispatch_latency_ms: int | None  # None if no dispatch happened
-    result_status: int | None  # HTTP status of the dispatched call
+    result_status: int | None        # HTTP status of the dispatched call
 
 
 @dataclass(frozen=True)
@@ -1151,13 +1142,13 @@ ParamLocation = Literal["path", "query", "body"]
 
 @dataclass(frozen=True)
 class RouteSpec:
-    name: str  # tool name shown to the LLM
-    description: str  # LLM-facing description
-    method: str  # uppercase HTTP method
-    path_template: str  # FastAPI path with {placeholders}
-    parameters_schema: dict[str, Any]  # flat merged JSON Schema object
-    param_locations: dict[str, ParamLocation]  # top-level field → location
-    handler: Callable[..., Any]  # the original FastAPI handler
+    name: str                                   # tool name shown to the LLM
+    description: str                            # LLM-facing description
+    method: str                                 # uppercase HTTP method
+    path_template: str                          # FastAPI path with {placeholders}
+    parameters_schema: dict[str, Any]           # flat merged JSON Schema object
+    param_locations: dict[str, ParamLocation]   # top-level field → location
+    handler: Callable[..., Any]                 # the original FastAPI handler
 
 
 __all__ = ["RouteSpec", "ParamLocation"]
@@ -1452,13 +1443,13 @@ def _build_parameters_schema(
     locations: dict[str, str] = {}
 
     # Path parameters: always required.
-    for param in route.dependant.path_params or []:
+    for param in (route.dependant.path_params or []):
         properties[param.name] = _field_schema(param)
         required.append(param.name)
         locations[param.name] = "path"
 
     # Query parameters: required only if FastAPI says so.
-    for param in route.dependant.query_params or []:
+    for param in (route.dependant.query_params or []):
         properties[param.name] = _field_schema(param)
         if _is_required(param):
             required.append(param.name)
@@ -1654,7 +1645,6 @@ def test_build_tools_returns_openai_compatible_shape():
 
 def test_invalid_mode_raises_at_construction():
     import pytest
-
     with pytest.raises(ValueError, match="mode"):
         ModeConfig(mode="bogus")  # type: ignore[arg-type]
 ```
@@ -1700,7 +1690,9 @@ class ModeConfig:
 
     def __post_init__(self) -> None:
         if self.mode not in ("decorator", "tag", "all"):
-            raise ValueError(f"mode must be one of 'decorator', 'tag', 'all'; got {self.mode!r}")
+            raise ValueError(
+                f"mode must be one of 'decorator', 'tag', 'all'; got {self.mode!r}"
+            )
 
 
 def _ai_meta(route: APIRoute) -> AIRouteMeta | None:
@@ -1757,7 +1749,6 @@ def build_registry(app: FastAPI, cfg: ModeConfig) -> dict[str, RouteSpec]:
         if name in registry:
             # deterministic suffix: lowercased method, then short path hash
             import hashlib
-
             base = f"{name}_{spec.method.lower()}"
             suffix = hashlib.sha1(spec.path_template.encode()).hexdigest()[:4]
             name = f"{base}_{suffix}"
@@ -1861,7 +1852,9 @@ def test_wraps_non_json_response_as_text():
         content=b"plain text",
         headers={"content-type": "text/plain"},
     )
-    body = wrap_envelope(endpoint="GET /notes", args={}, reasoning=None, response=resp)
+    body = wrap_envelope(
+        endpoint="GET /notes", args={}, reasoning=None, response=resp
+    )
     assert body["result"] == "plain text"
 
 
@@ -2036,11 +2029,7 @@ async def test_dispatch_calls_route_via_loopback():
     )
     args = {"order_id": 7, "reason": "duplicate"}
     response = await dispatch(
-        spec=spec,
-        args=args,
-        app=app,
-        request_headers={},
-        forward=frozenset(),
+        spec=spec, args=args, app=app, request_headers={}, forward=frozenset(),
     )
     assert response.status_code == 200
     assert response.json() == {"order_id": 7, "reason": "duplicate"}
@@ -2169,11 +2158,19 @@ def split_by_location(
     return path, query, body
 
 
-def _forward(request_headers: Mapping[str, str], allowed: frozenset[str]) -> dict[str, str]:
-    return {k: v for k, v in request_headers.items() if k.lower() in allowed}
+def _forward(
+    request_headers: Mapping[str, str], allowed: frozenset[str]
+) -> dict[str, str]:
+    return {
+        k: v
+        for k, v in request_headers.items()
+        if k.lower() in allowed
+    }
 
 
-def _unwrap_body_field_names(body: dict[str, Any], locations: Mapping[str, str]) -> dict[str, Any]:
+def _unwrap_body_field_names(
+    body: dict[str, Any], locations: Mapping[str, str]
+) -> dict[str, Any]:
     """Reverse the *_body collision rename when constructing the loopback body.
 
     A field is treated as a renamed-due-to-collision body field if all of:
@@ -2389,15 +2386,13 @@ from fastapi_ai_router.observability import (
 )
 from fastapi_ai_router.schema import RouteSpec
 
-DEFAULT_FORWARD_HEADERS = frozenset(
-    {
-        "authorization",
-        "cookie",
-        "x-api-key",
-        "x-forwarded-for",
-        "x-request-id",
-    }
-)
+DEFAULT_FORWARD_HEADERS = frozenset({
+    "authorization",
+    "cookie",
+    "x-api-key",
+    "x-forwarded-for",
+    "x-request-id",
+})
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a router. Choose exactly one tool that best satisfies the user's "
@@ -2517,7 +2512,9 @@ class AIRouter:
 
         spec = registry.get(tool_call.name)
         if spec is None:
-            await self._fire_error(request_id, query, "unknown_tool", tool_call.name, None)
+            await self._fire_error(
+                request_id, query, "unknown_tool", tool_call.name, None
+            )
             return _json_response(
                 422,
                 {
@@ -2624,7 +2621,6 @@ class AIRouter:
 
 def _json_response(status: int, body: dict[str, Any]) -> Response:
     import json
-
     return Response(
         content=json.dumps(body).encode(),
         status_code=status,
@@ -2686,7 +2682,6 @@ def test_public_api_exports():
         DEFAULT_FORWARD_HEADERS,
         DEFAULT_SYSTEM_PROMPT,
     )
-
     # smoke-check they're the right kind of thing
     assert callable(ai_route)
     assert callable(AIRouter)
@@ -3864,7 +3859,6 @@ AIRouter(app, llm=..., forward_headers=DEFAULT_FORWARD_HEADERS | {"x-tenant-id"}
 ```python
 async def to_langfuse(d):
     await langfuse_client.log(...)
-
 
 AIRouter(app, llm=..., on_decision=to_langfuse)
 ```

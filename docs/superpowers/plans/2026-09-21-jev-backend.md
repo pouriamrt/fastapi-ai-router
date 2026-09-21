@@ -326,14 +326,16 @@ In `src/fastapi_ai_router/dispatcher.py` add `from fastapi_ai_router.errors impo
 with:
 
 ```python
-path_args, query_args, body_args = split_by_location(args, spec.param_locations)
-missing = tuple(
-    name for name, loc in spec.param_locations.items() if loc == "path" and name not in path_args
-)
-if missing:
-    raise MissingPathParams(missing)
+    path_args, query_args, body_args = split_by_location(args, spec.param_locations)
+    missing = tuple(
+        name
+        for name, loc in spec.param_locations.items()
+        if loc == "path" and name not in path_args
+    )
+    if missing:
+        raise MissingPathParams(missing)
 
-encoded_path_args = {k: quote(str(v), safe="") for k, v in path_args.items()}
+    encoded_path_args = {k: quote(str(v), safe="") for k, v in path_args.items()}
 ```
 
 - [ ] **Step 6: Map it to 422 in core**
@@ -442,7 +444,7 @@ In `src/fastapi_ai_router/observability.py`, add a last field to `Decision`:
 In `src/fastapi_ai_router/core.py`, in `_fire_decision`, add to the `Decision(...)` call after `result_status=result_status,`:
 
 ```python
-confidence = (tool_call.confidence,)
+            confidence=tool_call.confidence,
 ```
 
 - [ ] **Step 4: Run everything**
@@ -705,7 +707,8 @@ try:
     from typesafe_sdk import Choice
 except ImportError as exc:  # pragma: no cover
     raise ImportError(
-        "JevBackend requires the 'jev' extra. Install with: pip install fastapi-ai-router[jev]"
+        "JevBackend requires the 'jev' extra. "
+        "Install with: pip install fastapi-ai-router[jev]"
     ) from exc
 
 from fastapi_ai_router.backends import ToolDef
@@ -737,7 +740,9 @@ class ArgSlot:
     enum_values: tuple[Any, ...] = ()
 
 
-def _resolve(schema: Mapping[str, Any], root_defs: Mapping[str, Any]) -> Mapping[str, Any] | None:
+def _resolve(
+    schema: Mapping[str, Any], root_defs: Mapping[str, Any]
+) -> Mapping[str, Any] | None:
     """Unwrap Optional (anyOf with null) and a local $ref. None if unresolvable."""
     defs = {**root_defs, **(schema.get("$defs") or {})}
     variants = schema.get("anyOf")
@@ -841,7 +846,9 @@ def build_questions(tools: list[ToolDef], slots: list[ArgSlot]) -> dict[str, Cho
         if slot.options:
             criteria: dict[str, str | None] = dict.fromkeys(slot.options)
             criteria[NOT_STATED] = "The request does not state this value."
-            questions[slot.qid] = Choice(instructions=_arg_instructions(slot), criteria=criteria)
+            questions[slot.qid] = Choice(
+                instructions=_arg_instructions(slot), criteria=criteria
+            )
     return questions
 
 
@@ -1111,7 +1118,8 @@ try:
     )
 except ImportError as exc:  # pragma: no cover
     raise ImportError(
-        "JevBackend requires the 'jev' extra. Install with: pip install fastapi-ai-router[jev]"
+        "JevBackend requires the 'jev' extra. "
+        "Install with: pip install fastapi-ai-router[jev]"
     ) from exc
 
 from fastapi_ai_router.backends import LLMBackend, Message, ToolCall, ToolDef
@@ -1135,7 +1143,9 @@ def _answer(response: SystemOneResponse, qid: str) -> ChoiceAnswer:
     return answer
 
 
-def collect_args(response: SystemOneResponse, slots: list[ArgSlot]) -> tuple[dict[str, Any], bool]:
+def collect_args(
+    response: SystemOneResponse, slots: list[ArgSlot]
+) -> tuple[dict[str, Any], bool]:
     """Typed args for one route, and whether a required param came back empty."""
     args: dict[str, Any] = {}
     missing_required = False
@@ -1291,7 +1301,9 @@ def test_jev_backend_routes_and_dispatches(sample_app):
 def test_jev_backend_missing_order_id_returns_422(sample_app):
     stub = JevStubClient({ROUTE_QID: ("cancel", 0.9), "arg1": (NOT_STATED, 1.0)})
     AIRouter(sample_app, llm=JevBackend(client=stub))
-    resp = TestClient(sample_app).post("/ai", json={"query": "cancel my order"}, headers=AUTH)
+    resp = TestClient(sample_app).post(
+        "/ai", json={"query": "cancel my order"}, headers=AUTH
+    )
     assert resp.status_code == 422
     assert resp.json()["missing"] == ["order_id"]
 
@@ -1397,7 +1409,9 @@ def test_jev_routes_and_extracts(client, query, endpoint, expected_args):
 
 
 def test_jev_extracts_free_text_reason(client):
-    body = client.post("/ai", json={"query": "cancel order 123 because it was a duplicate"}).json()
+    body = client.post(
+        "/ai", json={"query": "cancel order 123 because it was a duplicate"}
+    ).json()
     assert "duplicate" in body["args"]["reason"]
 
 

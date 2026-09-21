@@ -50,7 +50,7 @@ packages = ["src/fastapi_ai_router"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["examples"]
+extend-exclude = ["examples", "docs/superpowers"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]

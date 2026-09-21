@@ -49,19 +49,17 @@ from fastapi_ai_router import AIRouter, ai_route
 
 app = FastAPI()
 
-
 @app.post("/orders/{order_id}/cancel")
 @ai_route(description="Cancel a customer's order and refund the payment.")
-def cancel_order(order_id: int, reason: str | None = None, user=Depends(auth)): ...
-
+def cancel_order(order_id: int, reason: str | None = None, user=Depends(auth)):
+    ...
 
 @app.get("/products")
 @ai_route(description="Search products by category.")
-def list_products(category: str | None = None, limit: int = 20): ...
-
+def list_products(category: str | None = None, limit: int = 20):
+    ...
 
 from fastapi_ai_router.backends import LiteLLMBackend
-
 AIRouter(app, llm=LiteLLMBackend(model="gpt-5-mini"))  # one line to enable
 ```
 
@@ -88,21 +86,25 @@ $ curl -X POST http://localhost:8000/ai \
 AIRouter(
     app,
     # exposure control
-    mode="decorator",  # "decorator" | "tag" | "all"  (default safe)
-    tag="ai",  # used when mode="tag"
-    exclude=["/admin/*"],  # used when mode="all"
+    mode="decorator",                  # "decorator" | "tag" | "all"  (default safe)
+    tag="ai",                          # used when mode="tag"
+    exclude=["/admin/*"],              # used when mode="all"
+
     # endpoint
-    endpoint="/ai",  # path of the AI router endpoint itself
-    dependencies=[],  # FastAPI Depends() applied to /ai (Layer-1 auth)
+    endpoint="/ai",                    # path of the AI router endpoint itself
+    dependencies=[],                   # FastAPI Depends() applied to /ai (Layer-1 auth)
+
     # LLM backend (REQUIRED — no default)
     llm=LiteLLMBackend(model="gpt-5-mini"),  # any LLMBackend protocol implementer
+
     # request/response shaping
-    raw_query_param="raw",  # client passes ?raw=true for pass-through response
+    raw_query_param="raw",             # client passes ?raw=true for pass-through response
     forward_headers=DEFAULT_FORWARD_HEADERS,  # which headers loopback to dispatched call
+
     # observability
-    on_decision=None,  # async hook: (Decision) -> None
-    on_error=None,  # async hook: (ErrorEvent) -> None
-    debug=False,  # logs full prompt/response for development
+    on_decision=None,                  # async hook: (Decision) -> None
+    on_error=None,                     # async hook: (ErrorEvent) -> None
+    debug=False,                       # logs full prompt/response for development
 )
 ```
 
@@ -180,13 +182,13 @@ For each route surviving the mode filter, we project an OpenAPI operation into a
 ```python
 @dataclass(frozen=True)
 class RouteSpec:
-    name: str  # tool name the LLM sees
-    description: str  # from @ai_route(description=...) or docstring
-    method: str  # "POST"
-    path_template: str  # "/orders/{order_id}/cancel"
-    parameters_schema: dict  # merged JSON Schema, flat
-    param_locations: dict[str, str]  # {"order_id":"path", "reason":"body"}
-    handler: Callable  # for direct-call escape hatch
+    name: str                          # tool name the LLM sees
+    description: str                   # from @ai_route(description=...) or docstring
+    method: str                        # "POST"
+    path_template: str                 # "/orders/{order_id}/cancel"
+    parameters_schema: dict            # merged JSON Schema, flat
+    param_locations: dict[str, str]    # {"order_id":"path", "reason":"body"}
+    handler: Callable                  # for direct-call escape hatch
 ```
 
 The flat `parameters_schema` is built by merging:
@@ -218,7 +220,6 @@ The flat top-level merge applies only to the *boundary* between path/query/body.
 
 ```python
 from urllib.parse import quote
-
 
 async def dispatch(
     spec: RouteSpec,
@@ -300,23 +301,18 @@ Devs can override via `forward_headers=` to add tenant headers, etc.
 class AIRouterError(Exception):
     """Base — all library errors derive from this."""
 
-
 class NoRouteMatched(AIRouterError):
     """LLM declined to call any tool. Carries the LLM's text reply."""
 
-
 class UnknownTool(AIRouterError):
     """LLM called a tool name we didn't expose."""
-
 
 class LLMBackendError(AIRouterError):
     """LLM call itself failed (timeout, rate limit, invalid response).
     Wraps the upstream exception."""
 
-
 class DispatchError(AIRouterError):
     """Loopback HTTP call failed for non-route-logic reasons (transport error)."""
-
 
 class ToolSchemaTooLarge(AIRouterError):
     """Combined tool definitions exceed the configured token budget.
@@ -345,7 +341,7 @@ Two async hooks. No vendor dependencies in the core. Both are awaited by default
 class Decision:
     request_id: str
     query: str
-    tool_name: str | None  # None when no tool was selected
+    tool_name: str | None        # None when no tool was selected
     args: dict
     reasoning: str | None
     model: str
@@ -353,8 +349,7 @@ class Decision:
     completion_tokens: int
     llm_latency_ms: int
     dispatch_latency_ms: int | None
-    result_status: int | None  # HTTP status of the dispatched call
-
+    result_status: int | None    # HTTP status of the dispatched call
 
 @dataclass(frozen=True)
 class ErrorEvent:
@@ -364,10 +359,8 @@ class ErrorEvent:
     error_detail: str
     upstream: BaseException | None
 
-
 class DecisionHook(Protocol):
     async def __call__(self, decision: Decision) -> None: ...
-
 
 class ErrorHook(Protocol):
     async def __call__(self, event: ErrorEvent) -> None: ...
@@ -389,12 +382,11 @@ Plus `logging.getLogger("fastapi_ai_router")`:
 @dataclass(frozen=True)
 class ToolCall:
     name: str
-    args: dict  # JSON-decodable; matches the tool's parameters_schema
-    reasoning: str | None  # backend-supplied "thought" if available
-    prompt_tokens: int  # 0 if backend cannot report
-    completion_tokens: int  # 0 if backend cannot report
-    model: str  # the model identifier the backend used
-
+    args: dict                       # JSON-decodable; matches the tool's parameters_schema
+    reasoning: str | None            # backend-supplied "thought" if available
+    prompt_tokens: int               # 0 if backend cannot report
+    completion_tokens: int           # 0 if backend cannot report
+    model: str                       # the model identifier the backend used
 
 class LLMBackend(Protocol):
     async def call(
@@ -411,16 +403,14 @@ class Message(TypedDict):
     role: Literal["system", "user", "assistant", "tool"]
     content: str
 
-
 class ToolDef(TypedDict):
     type: Literal["function"]
     function: FunctionDef
 
-
 class FunctionDef(TypedDict):
     name: str
     description: str
-    parameters: dict  # JSON Schema object
+    parameters: dict                 # JSON Schema object
 ```
 
 This is the OpenAI-compatible function-calling shape, which is also what Anthropic, Gemini, and most OSS function-calling models support natively. A backend's job is to translate this in→out:
