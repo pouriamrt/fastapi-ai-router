@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from typesafe_sdk import TypeSafeError
 
@@ -166,6 +168,28 @@ def test_build_slots_covers_every_route_param():
         ("arg3", "list_products", "limit", "integer", False),
     ]
     assert slots[0].options == ("123",)
+
+
+def test_build_slots_bounds_and_shares_string_candidate_generation():
+    query = " ".join(f"w{i}" for i in range(20_000))
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "search",
+            "description": "Search.",
+            "parameters": {
+                "type": "object",
+                "properties": {f"p{i}": {"type": "string"} for i in range(20)},
+                "required": [],
+            },
+        },
+    }
+    start = time.perf_counter()
+    slots = build_slots(query, [tool], 6)
+    elapsed = time.perf_counter() - start
+    assert len(slots) == 20
+    assert all(len(slot.options) == MAX_CHOICE_OPTIONS - 1 for slot in slots)
+    assert elapsed < 0.3
 
 
 def test_build_slots_marks_unsupported_types():

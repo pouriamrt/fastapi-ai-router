@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -92,41 +92,61 @@ def classify(
     return None, ()
 
 
+def _string_spans(words: list[str], max_span_words: int) -> Iterator[str]:
+    """Every contiguous word n-gram up to max_span_words long, in scan order."""
+    for i in range(len(words)):
+        upper = min(len(words), i + max_span_words) + 1
+        for j in range(i + 1, upper):
+            yield " ".join(words[i:j])
+
+
 def candidates(
     query: str, kind: ParamKind, enum_values: tuple[Any, ...], max_span_words: int
 ) -> tuple[str, ...]:
     """Candidate values for one param, capped to fit a single Choice."""
+    spans: Iterable[str]
     if kind == "enum":
-        spans = [str(v) for v in enum_values]
+        spans = (str(v) for v in enum_values)
     elif kind == "boolean":
-        spans = ["true", "false"]
+        spans = ("true", "false")
     elif kind == "integer":
         spans = _INT.findall(query)
     elif kind == "number":
         spans = _NUMBER.findall(query)
     else:
-        words = _WORD.findall(query)
-        spans = [
-            " ".join(words[i:j])
-            for i in range(len(words))
-            for j in range(i + 1, min(len(words), i + max_span_words) + 1)
-        ]
-    unique = [s for s in dict.fromkeys(spans) if s != NOT_STATED]
-    # ponytail: long queries lose their late spans at the cap; extract per route
-    # in a second call if that bites.
-    return tuple(unique[: MAX_CHOICE_OPTIONS - 1])
+        # ponytail: spans are generated lazily and stop at the cap below, so a
+        # long query never materializes every n-gram; a max query length in
+        # core is the real bound (follow-up, not this wave).
+        spans = _string_spans(_WORD.findall(query), max_span_words)
+    cap = MAX_CHOICE_OPTIONS - 1
+    unique: dict[str, None] = {}
+    for span in spans:
+        if span == NOT_STATED or span in unique:
+            continue
+        unique[span] = None
+        if len(unique) == cap:
+            break
+    return tuple(unique)
 
 
 def build_slots(query: str, tools: list[ToolDef], max_span_words: int) -> list[ArgSlot]:
     """One slot per (route, param) across every tool."""
     slots: list[ArgSlot] = []
+    # Every string slot (no enum) shares identical candidates; every enum slot
+    # with the same values shares identical candidates too. Compute each once.
+    cache: dict[tuple[ParamKind, tuple[Any, ...]], tuple[str, ...]] = {}
     for tool in tools:
         params = tool["function"]["parameters"]
         root_defs = params.get("$defs") or {}
         required = set(params.get("required") or [])
         for name, schema in (params.get("properties") or {}).items():
             kind, enum_values = classify(schema, root_defs)
-            options = candidates(query, kind, enum_values, max_span_words) if kind else ()
+            options: tuple[str, ...] = ()
+            if kind is not None:
+                key = (kind, enum_values)
+                if key not in cache:
+                    cache[key] = candidates(query, kind, enum_values, max_span_words)
+                options = cache[key]
             slots.append(
                 ArgSlot(
                     qid=f"arg{len(slots)}",
