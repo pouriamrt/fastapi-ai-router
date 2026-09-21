@@ -6,6 +6,8 @@
 
 Drop-in middleware. Zero new metadata. Uses the OpenAPI schema FastAPI already generates.
 
+Route with any LLM through LiteLLM, or skip the LLM and let TypeSafe's Jev classifier pick the route and its arguments in about 150 ms.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -14,7 +16,8 @@ Drop-in middleware. Zero new metadata. Uses the OpenAPI schema FastAPI already g
 [![Typed: mypy strict](https://img.shields.io/badge/typed-mypy%20strict-2A6DB2.svg)](https://mypy-lang.org/)
 [![Tests: passing](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#testing)
 [![Coverage: gated](https://img.shields.io/badge/coverage-gated-brightgreen.svg)](#testing)
-[![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
+[![Backends: LiteLLM | Jev](https://img.shields.io/badge/backends-LiteLLM%20%7C%20Jev-7B61FF.svg)](#choosing-a-backend)
+[![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#project-status)
 
 </div>
 
@@ -56,6 +59,8 @@ $ curl -X POST localhost:8000/ai \
 
 That's it. The LLM picked the right route, filled the args, the middleware dispatched the call, and your existing `Depends(auth)` + middleware + Pydantic validation all ran normally.
 
+The same request also works with no LLM at all: [`JevBackend()`](#jev-backend-routing-without-an-llm).
+
 ---
 
 ## Why this exists
@@ -68,6 +73,7 @@ Most LLM "routing" libraries are SaaS gateways or LangChain agents. There was no
 | Add NL to a whole app | Hand-code 50 tool wrappers | `AIRouter(app, llm=...)` |
 | Keep auth/middleware/validation | Re-implement in your agent | Free — loopback through FastAPI |
 | Swap models or providers | Rewrite agent | Swap `LLMBackend` |
+| Route high volume cheaply | Pay for an LLM call per request | `JevBackend`: one classifier call, no LLM |
 | Test without an API key | 🥲 | `FakeLLMBackend(returns=ToolCall(...))` |
 
 ---
@@ -120,6 +126,7 @@ flowchart LR
 
     subgraph backends ["Backends"]
         LiteLLM["LiteLLMBackend<br/>via litellm extra"]
+        Jev["JevBackend<br/>via jev extra"]
         Fake["FakeLLMBackend<br/>for tests"]
         BYO["Your backend<br/>implements Protocol"]
     end
@@ -131,6 +138,7 @@ flowchart LR
     AIRouter --> observability
     AIRouter -. uses .-> LLMBackend
     LLMBackend -. implemented by .-> LiteLLM
+    LLMBackend -. implemented by .-> Jev
     LLMBackend -. implemented by .-> Fake
     LLMBackend -. implemented by .-> BYO
 ```
@@ -151,6 +159,21 @@ The `[litellm]` extra gives you OpenAI / Anthropic / Gemini / Ollama / 100+ prov
 ```bash
 pip install fastapi-ai-router
 ```
+
+---
+
+## Choosing a backend
+
+| | `LiteLLMBackend` | `JevBackend` | `JevBackend(fallback=LiteLLMBackend(...))` |
+|---|---|---|---|
+| How it picks | LLM tool calling | A classifier picks the route, then picks each argument from values in the query | Jev first; the LLM only for what Jev can't do |
+| Speed | One LLM round trip | 140–470 ms per request in a live run | Jev's speed whenever Jev handles it |
+| Cost per request | LLM tokens | About $0.00006 | Jev, plus LLM tokens on fallback only |
+| Arguments | Anything the schema allows | Integers, numbers, booleans, enums, words from the query | Both |
+| Confidence score | No | Yes, calibrated, per route | Yes when Jev routes |
+| Key | Your provider's | `TYPESAFE_API_KEY` | Both |
+
+Pick LiteLLM when requests need free-form or structured arguments. Pick Jev when the route and its arguments are sitting in the user's words and latency or cost matters. The fallback combination answers with Jev when it can and calls the LLM only for the rest.
 
 ---
 
@@ -240,6 +263,25 @@ from fastapi_ai_router.backends.jev import JevBackend
 AIRouter(app, llm=JevBackend())  # reads TYPESAFE_API_KEY
 ```
 
+A request from a live run against [`examples/05_jev.py`](examples/05_jev.py), answered in 158 ms:
+
+```bash
+$ curl -X POST localhost:8000/ai -H 'content-type: application/json' \
+    -d '{"query":"please cancel #4521, wrong size"}'
+```
+
+```json
+{
+  "endpoint": "POST /orders/{order_id}/cancel",
+  "args": {"order_id": 4521, "reason": "wrong size"},
+  "result": {"status": "cancelled", "order_id": 4521, "reason": "wrong size"},
+  "reasoning": null,
+  "result_status": 200
+}
+```
+
+`reasoning` is `null` because Jev picks from options instead of writing text. A query that fits no route, such as "what's the weather in Paris", returns `422 no_route_matched`. A missing required value returns a 422 instead of a made-up one: "cancel my order" has no order number, so the response is `422 missing_path_param`.
+
 Jev handles integers, numbers, booleans, enums, and strings that appear word for word in the query. It can't build lists or nested objects, and it doesn't read number words ("five"). For those cases, and whenever it isn't sure which route fits, you can hand the request to an LLM:
 
 ```python
@@ -319,7 +361,7 @@ Saying "we don't do this yet" up front is itself a positioning choice — see [d
 
 ## Project status
 
-**Alpha.** v0.1.0.dev0. The API surface above is what we'll ship as v0.1.0 stable. Breaking changes from here forward are documented in [CHANGELOG.md](CHANGELOG.md).
+**Alpha.** v0.1.0 is released. `JevBackend` and the fixes that came with it are listed under Unreleased in [CHANGELOG.md](CHANGELOG.md), which also records every breaking change.
 
 - ✅ Core: introspection + dispatch + envelope + errors + observability
 - ✅ Three exposure modes (`decorator` / `tag` / `all`)
@@ -351,7 +393,7 @@ RUN_LLM_TESTS=1 uv run pytest tests/e2e/        # gated real-LLM smoke tests
 RUN_LLM_TESTS=1 uv run --env-file .env pytest tests/e2e/test_with_real_jev.py   # real Jev calls
 ```
 
-The test suite is **deterministic and network-free** by default — every test uses `FakeLLMBackend`. Real-LLM tests are gated behind an env var and run only on release tags in CI.
+The test suite is **deterministic and network-free** by default. Every test uses `FakeLLMBackend` or a stubbed Jev client. Real-LLM and real-Jev tests are gated behind env vars and run only on release tags in CI.
 
 ---
 
