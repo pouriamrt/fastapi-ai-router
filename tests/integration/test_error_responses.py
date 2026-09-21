@@ -94,3 +94,30 @@ def test_dispatch_error_returns_500(sample_app, monkeypatch):
     body = resp.json()
     assert body["error"] == "dispatch_error"
     assert "transport exploded" in body["detail"]
+
+
+def test_missing_path_param_returns_422(sample_app):
+    events = []
+
+    async def on_error(event) -> None:
+        events.append(event)
+
+    backend = make_backend(
+        ToolCall(
+            name="cancel",
+            args={"reason": "dup"},
+            reasoning=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            model="fake",
+        )
+    )
+    AIRouter(sample_app, llm=backend, mode="decorator", on_error=on_error)
+    resp = TestClient(sample_app).post("/ai", json={"query": "cancel my order"})
+    assert resp.status_code == 422
+    assert resp.json() == {
+        "error": "missing_path_param",
+        "missing": ["order_id"],
+        "endpoint": "POST /orders/{order_id}/cancel",
+    }
+    assert events[0].error_type == "missing_path_param"

@@ -14,6 +14,7 @@ def test_public_api_exports():
         LLMBackend,  # noqa: F401
         LLMBackendError,  # noqa: F401
         Message,  # noqa: F401
+        MissingPathParams,  # noqa: F401
         NoRouteMatched,  # noqa: F401
         ToolCall,  # noqa: F401
         ToolDef,  # noqa: F401

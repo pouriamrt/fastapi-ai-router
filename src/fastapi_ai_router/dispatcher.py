@@ -14,6 +14,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import FastAPI
 
+from fastapi_ai_router.errors import MissingPathParams
 from fastapi_ai_router.schema import RouteSpec
 
 
@@ -71,6 +72,13 @@ async def dispatch(
 ) -> httpx.Response:
     """Dispatch the LLM-chosen tool call as an in-process HTTP request."""
     path_args, query_args, body_args = split_by_location(args, spec.param_locations)
+    missing = tuple(
+        name
+        for name, loc in spec.param_locations.items()
+        if loc == "path" and name not in path_args
+    )
+    if missing:
+        raise MissingPathParams(missing)
 
     encoded_path_args = {k: quote(str(v), safe="") for k, v in path_args.items()}
     url = spec.path_template.format(**encoded_path_args)

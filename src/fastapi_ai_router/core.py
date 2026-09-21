@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi_ai_router.backends import LLMBackend, Message, ToolCall
 from fastapi_ai_router.dispatcher import dispatch
 from fastapi_ai_router.envelope import is_raw_requested, wrap_envelope
-from fastapi_ai_router.errors import LLMBackendError
+from fastapi_ai_router.errors import LLMBackendError, MissingPathParams
 from fastapi_ai_router.introspection import Mode, ModeConfig, build_registry, build_tools
 from fastapi_ai_router.observability import (
     Decision,
@@ -181,6 +181,16 @@ class AIRouter:
                 app=self._app,
                 request_headers=dict(request.headers),
                 forward=self._forward_headers,
+            )
+        except MissingPathParams as exc:
+            await self._fire_error(request_id, query, "missing_path_param", str(exc), exc)
+            return _json_response(
+                422,
+                {
+                    "error": "missing_path_param",
+                    "missing": list(exc.missing),
+                    "endpoint": f"{spec.method} {spec.path_template}",
+                },
             )
         except BaseException as exc:
             await self._fire_error(request_id, query, "dispatch_error", str(exc), exc)

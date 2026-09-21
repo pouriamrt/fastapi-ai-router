@@ -2,6 +2,7 @@ import pytest
 from fastapi import FastAPI, Header, HTTPException
 
 from fastapi_ai_router.dispatcher import dispatch, split_by_location
+from fastapi_ai_router.errors import MissingPathParams
 from fastapi_ai_router.schema import RouteSpec
 
 
@@ -155,3 +156,25 @@ async def test_dispatch_does_not_forward_unallowed_headers():
     # care about. Assert non-success.
     assert response.status_code >= 400
     assert response.status_code != 200
+
+
+@pytest.mark.asyncio
+async def test_dispatch_raises_missing_path_params():
+    spec = RouteSpec(
+        name="cancel",
+        description="",
+        method="POST",
+        path_template="/orders/{order_id}/cancel",
+        parameters_schema={"type": "object"},
+        param_locations={"order_id": "path", "reason": "query"},
+        handler=lambda: None,
+    )
+    with pytest.raises(MissingPathParams) as ei:
+        await dispatch(
+            spec=spec,
+            args={"reason": "dup"},
+            app=_build_app(),
+            request_headers={},
+            forward=frozenset(),
+        )
+    assert ei.value.missing == ("order_id",)

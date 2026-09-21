@@ -49,3 +49,11 @@ class ToolSchemaTooLarge(AIRouterError):
         self.tool_count = tool_count
         self.approx_tokens = approx_tokens
         super().__init__(f"Tool schema is too large: {tool_count} tools, ~{approx_tokens} tokens.")
+
+
+class MissingPathParams(AIRouterError):
+    """Backend left out one or more path parameters, so the URL can't be built."""
+
+    def __init__(self, missing: tuple[str, ...]) -> None:
+        self.missing = missing
+        super().__init__(f"Missing path parameters: {', '.join(missing)}")
