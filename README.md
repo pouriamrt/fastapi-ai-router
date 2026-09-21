@@ -317,7 +317,7 @@ Saying "we don't do this yet" up front is itself a positioning choice — see [d
 - ✅ Core: introspection + dispatch + envelope + errors + observability
 - ✅ Three exposure modes (`decorator` / `tag` / `all`)
 - ✅ Two backends shipped: `LiteLLMBackend`, `FakeLLMBackend`
-- ✅ 74 tests passing, **87% coverage**, mypy strict, ruff clean
+- ✅ Test suite passing under an 80% coverage gate, mypy strict, ruff clean
 - ✅ Examples + concepts/recipes/security docs
 
 ---
@@ -329,7 +329,7 @@ Saying "we don't do this yet" up front is itself a positioning choice — see [d
 | [docs/concepts.md](docs/concepts.md) | Mental model, request flow, two-layer auth, mode comparison, caching |
 | [docs/recipes.md](docs/recipes.md) | Custom backend, custom forwarding, tracing integrations, large-app strategies |
 | [docs/security.md](docs/security.md) | When `mode="all"` is dangerous, prompt injection, header forwarding |
-| [examples/](examples/) | Four runnable apps: basic, tag-mode, with-auth, with-observability |
+| [examples/](examples/) | Five runnable apps: basic, tag-mode, with-auth, with-observability, Jev |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing without API keys, adding a backend |
 
 ---
@@ -340,6 +340,7 @@ Saying "we don't do this yet" up front is itself a positioning choice — see [d
 uv sync --extra dev
 uv run pytest                                   # deterministic, no API keys
 uv run pytest --cov=fastapi_ai_router           # coverage report
+RUN_LLM_TESTS=1 uv run pytest tests/e2e/        # gated real-LLM smoke tests
 RUN_LLM_TESTS=1 uv run --env-file .env pytest tests/e2e/test_with_real_jev.py   # real Jev calls
 ```
 
