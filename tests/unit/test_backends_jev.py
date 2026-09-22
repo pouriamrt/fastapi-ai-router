@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typesafe_sdk import TypeSafeError
+from typesafe_sdk import TypeSafeBadRequestError, TypeSafeError
 
 from fastapi_ai_router.backends import ToolCall, jev
 from fastapi_ai_router.backends.fake import FakeLLMBackend
@@ -435,3 +435,30 @@ def test_injected_client_is_never_replaced_across_loops():
     asyncio.run(backend.call(_messages("hi"), TOOLS))
     assert backend.client is stub
     assert len(stub.calls) == 2
+
+
+def _bad_request() -> TypeSafeBadRequestError:
+    return TypeSafeBadRequestError(status=400, body={}, headers={}, message="Too many choices")
+
+
+async def test_deterministic_400_goes_to_fallback_with_all_tools(caplog):
+    llm_call = ToolCall(
+        name="list_products",
+        args={},
+        reasoning=None,
+        prompt_tokens=5,
+        completion_tokens=1,
+        model="llm",
+    )
+    fallback = FakeLLMBackend(returns=llm_call)
+    backend = JevBackend(client=JevStubClient(_bad_request()), fallback=fallback)
+    assert await backend.call(_messages("show products"), TOOLS) == llm_call
+    assert fallback.calls[0].tools == TOOLS
+    assert "Jev rejected the request" in caplog.text
+
+
+async def test_deterministic_400_without_fallback_raises():
+    backend = JevBackend(client=JevStubClient(_bad_request()))
+    with pytest.raises(LLMBackendError) as ei:
+        await backend.call(_messages("show products"), TOOLS)
+    assert isinstance(ei.value.upstream, TypeSafeBadRequestError)

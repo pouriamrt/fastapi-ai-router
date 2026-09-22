@@ -232,3 +232,112 @@ def test_schema_without_defs_has_no_defs_key():
     spec = route_to_spec(_route_named(app, "list_products"))
     assert spec is not None
     assert "$defs" not in spec.parameters_schema
+
+
+def test_query_enum_defs_hoisted_to_root():
+    class Size(StrEnum):
+        s = "s"
+        m = "m"
+
+    app = FastAPI()
+
+    @app.get("/shirts", name="list_shirts")
+    def list_shirts(size: Size | None = None) -> dict:
+        return {}
+
+    spec = route_to_spec(_route_named(app, "list_shirts"))
+    assert spec is not None
+    schema = spec.parameters_schema
+    assert "$defs" not in schema["properties"]["size"]
+    assert schema["$defs"]["Size"]["enum"] == ["s", "m"]
+
+
+def test_lone_list_of_models_body_defs_hoisted_to_root():
+    class Item(BaseModel):
+        name: str
+
+    app = FastAPI()
+
+    @app.post("/items", name="bulk_items")
+    def bulk_items(items: list[Item]) -> dict:
+        return {}
+
+    spec = route_to_spec(_route_named(app, "bulk_items"))
+    assert spec is not None
+    schema = spec.parameters_schema
+    assert schema["properties"]["items"] == {"items": {"$ref": "#/$defs/Item"}, "type": "array"}
+    assert "name" in schema["$defs"]["Item"]["properties"]
+
+
+def test_conflicting_def_names_are_renamed_at_root():
+    def _mode_a() -> type[StrEnum]:
+        class Mode(StrEnum):
+            a = "a"
+
+        return Mode
+
+    def _mode_b() -> type[StrEnum]:
+        class Mode(StrEnum):
+            b = "b"
+
+        return Mode
+
+    mode_a, mode_b = _mode_a(), _mode_b()
+    app = FastAPI()
+
+    @app.get("/x", name="pick")
+    def pick(first: mode_a | None = None, second: mode_b | None = None) -> dict:  # type: ignore[valid-type]
+        return {}
+
+    spec = route_to_spec(_route_named(app, "pick"))
+    assert spec is not None
+    schema = spec.parameters_schema
+    # Same def name, different schema: the second is renamed so both refs resolve from the root.
+    assert schema["$defs"]["Mode"]["enum"] == ["a"]
+    assert schema["$defs"]["Mode__second"]["enum"] == ["b"]
+    assert "$defs" not in schema["properties"]["second"]
+    assert {"$ref": "#/$defs/Mode__second"} in schema["properties"]["second"]["anyOf"]
+
+
+def test_flattened_model_defs_win_the_root_over_a_same_named_query_def():
+    def _mode_a() -> type[StrEnum]:
+        class Mode(StrEnum):
+            a = "a"
+
+        return Mode
+
+    def _mode_b() -> type[StrEnum]:
+        class Mode(StrEnum):
+            b = "b"
+
+        return Mode
+
+    mode_a, mode_b = _mode_a(), _mode_b()
+
+    class Payload(BaseModel):
+        mode: mode_b  # type: ignore[valid-type]
+
+    app = FastAPI()
+
+    @app.post("/y", name="both")
+    def both(payload: Payload, flag: mode_a | None = None) -> dict:  # type: ignore[valid-type]
+        return {}
+
+    spec = route_to_spec(_route_named(app, "both"))
+    assert spec is not None
+    schema = spec.parameters_schema
+    # The flattened field refs the root, so the model's Mode must own it.
+    assert schema["properties"]["mode"] == {"$ref": "#/$defs/Mode"}
+    assert schema["$defs"]["Mode"]["enum"] == ["b"]
+    assert schema["$defs"]["Mode__flag"]["enum"] == ["a"]
+    assert {"$ref": "#/$defs/Mode__flag"} in schema["properties"]["flag"]["anyOf"]
+
+
+def test_def_rename_never_overwrites_an_existing_def():
+    from fastapi_ai_router.schema import _hoist_defs
+
+    defs: dict = {"Mode": {"enum": ["a"]}, "Mode__second": {"enum": ["z"]}}
+    body = _hoist_defs({"$defs": {"Mode": {"enum": ["b"]}}, "$ref": "#/$defs/Mode"}, defs, "second")
+    assert defs["Mode__second"] == {"enum": ["z"]}
+    assert defs["Mode__second_2"] == {"enum": ["b"]}
+    assert body == {"$ref": "#/$defs/Mode__second_2"}

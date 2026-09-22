@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `JevBackend` hands a request to `fallback` when Jev rejects it as invalid (HTTP 400), for example an app with 255 or more routes or a request over Jev's context limit. Without a fallback, the error still surfaces as `llm_backend_error`.
+- The `DecisionHook` and `ErrorHook` parameters are positional-only, so type checkers accept hooks that name the parameter anything, such as `async def hook(d)`.
+
+### Fixed
+- `$defs` from query params, a lone non-model body, and multiple `Body()` params now sit at the root of the tool schema, where their `#/$defs/...` refs resolve. Only flattened body models did this before. When two params use the same def name for different schemas, the later one is renamed (for example `Mode__second`) rather than overwriting the other.
+
 ## [0.2.1] — 2026-09-21
 
 ### Changed
@@ -16,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The source distribution contains only the package, tests, examples, and docs. The 0.2.0 sdist also shipped local tool caches, including a 3.4 MB code-graph database with absolute file paths, plus internal planning docs. The 0.2.0 wheel was not affected.
 
 ## [0.2.0] — 2026-09-21
+
+Removed from PyPI; install 0.2.1, which has the same code with a clean sdist.
 
 ### Added
 - `JevBackend` (`fastapi-ai-router[jev]`): routes with TypeSafe's Jev classifier in a single request, with no LLM call. An optional `fallback=` backend handles low route confidence and arguments Jev can't extract.

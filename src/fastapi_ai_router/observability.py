@@ -35,12 +35,13 @@ class ErrorEvent:
     upstream: BaseException | None
 
 
+# Positional-only, so a hook may name its parameter anything (`async def hook(d): ...`).
 class DecisionHook(Protocol):
-    async def __call__(self, decision: Decision) -> None: ...
+    async def __call__(self, decision: Decision, /) -> None: ...
 
 
 class ErrorHook(Protocol):
-    async def __call__(self, event: ErrorEvent) -> None: ...
+    async def __call__(self, event: ErrorEvent, /) -> None: ...
 
 
 __all__ = [

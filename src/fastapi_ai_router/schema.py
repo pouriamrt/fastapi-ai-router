@@ -93,6 +93,52 @@ def _is_embedded(param: Any) -> bool:
     return bool(getattr(getattr(param, "field_info", None), "embed", False))
 
 
+_DEFS_PREFIX = "#/$defs/"
+
+
+def _rename_refs(node: Any, renames: dict[str, str]) -> Any:
+    """Copy of a schema node with `$ref`s to renamed defs pointed at their new names."""
+    if isinstance(node, dict):
+        out: dict[str, Any] = {}
+        for key, value in node.items():
+            is_local_ref = (
+                key == "$ref" and isinstance(value, str) and value.startswith(_DEFS_PREFIX)
+            )
+            name = value[len(_DEFS_PREFIX) :] if is_local_ref else None
+            if name is not None and name in renames:
+                out[key] = _DEFS_PREFIX + renames[name]
+            else:
+                out[key] = _rename_refs(value, renames)
+        return out
+    if isinstance(node, list):
+        return [_rename_refs(item, renames) for item in node]
+    return node
+
+
+def _hoist_defs(fragment: dict[str, Any], defs: dict[str, Any], owner: str) -> dict[str, Any]:
+    """Move a field schema's $defs to the root, where "#/$defs/..." refs resolve.
+
+    A def whose name the root already uses for a different schema is renamed to
+    `<name>__<owner>`, and the fragment's refs follow it.
+    """
+    local: dict[str, Any] = fragment.get("$defs") or {}
+    if not local:
+        return fragment
+    renames: dict[str, str] = {}
+    for n, d in local.items():
+        if n in defs and defs[n] != d:
+            target, i = f"{n}__{owner}", 2
+            while target in defs or target in local:  # never overwrite another def
+                target, i = f"{n}__{owner}_{i}", i + 1
+            renames[n] = target
+    body: dict[str, Any] = _rename_refs(
+        {k: v for k, v in fragment.items() if k != "$defs"}, renames
+    )
+    for name, definition in local.items():
+        defs[renames.get(name, name)] = _rename_refs(definition, renames)
+    return body
+
+
 def _field_schema(param: Any) -> dict[str, Any]:
     """Convert a FastAPI ModelField to a JSON Schema fragment via TypeAdapter."""
     annotation = _annotation_of(param)
@@ -165,6 +211,10 @@ def _build_parameters_schema(
             if _is_required(bp):
                 required.append(emit_name)
             locations[emit_name] = "body"
+
+    # One pass after the flattened model claimed the root: its fields ref "#/$defs/..."
+    # directly, so a same-named def from any other param gets renamed instead.
+    properties = {name: _hoist_defs(fragment, defs, name) for name, fragment in properties.items()}
 
     schema_obj: dict[str, Any] = {
         "type": "object",

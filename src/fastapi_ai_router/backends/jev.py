@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import logging
 import re
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ try:
         Choice,
         ChoiceAnswer,
         SystemOneResponse,
+        TypeSafeBadRequestError,
         TypeSafeError,
     )
 except ImportError as exc:  # pragma: no cover
@@ -31,6 +33,8 @@ except ImportError as exc:  # pragma: no cover
 
 from fastapi_ai_router.backends import LLMBackend, Message, ToolCall, ToolDef
 from fastapi_ai_router.errors import LLMBackendError
+
+logger = logging.getLogger("fastapi_ai_router")
 
 NOT_STATED = "not_stated"
 NO_ROUTE = "none_of_the_above"
@@ -260,7 +264,15 @@ class JevBackend(LLMBackend):
     ) -> ToolCall | None:
         query = _last_user_content(messages)
         slots = build_slots(query, tools, self.max_span_words)
-        response = await self._ask(query, build_questions(tools, slots))
+        try:
+            response = await self._ask(query, build_questions(tools, slots))
+        except LLMBackendError as exc:
+            # A 400 (255+ routes, context overflow) fails the same way on retry; let the LLM try.
+            # Logged because any other 400 is our own malformed request, which a fallback hides.
+            if self.fallback is not None and isinstance(exc.upstream, TypeSafeBadRequestError):
+                logger.warning("Jev rejected the request, using fallback: %s", exc.upstream)
+                return await self._fall_back(messages, tools, confidence=None)
+            raise
         route = _answer(response, ROUTE_QID)
         if route.confidence < self.min_confidence:
             return await self._fall_back(messages, tools, confidence=None)

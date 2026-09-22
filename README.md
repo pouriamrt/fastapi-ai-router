@@ -301,6 +301,7 @@ AIRouter(app, llm=JevBackend(fallback=LiteLLMBackend(model="gpt-4o-mini")))
 **Limits:**
 
 - Long queries are cut to the first 254 candidate spans per parameter.
+- One request can offer Jev at most 254 routes and must fit its context limit. Jev rejects anything bigger, and `JevBackend` then hands the request to `fallback` if you set one.
 - String values are taken from the query's own words, punctuation stripped. An email address or similar won't survive intact, so route params like that through an LLM fallback.
 - Jev reads text literally and isn't hardened against adversarial input; keep route-level auth regardless of backend.
 - The SDK's default timeout is 10 s with retries. Tune it by passing your own client: `JevBackend(client=AsyncTypeSafeClient(timeout=..., retry=...))`.
